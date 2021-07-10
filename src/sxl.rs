@@ -109,3 +109,67 @@ pub fn col_letter_to_num(letter: &str) -> Option<u16> {
     Some(num)
 }
 
+
+pub struct Workbook {
+    pub path: String,
+}
+
+
+pub struct Worksheet {
+    // _used_area: 
+    pub row_length: u16,
+    pub num_rows: u32,
+    pub workbook: Workbook,
+    pub name: String,
+    pub position: u8,
+    pub location_in_zip_file: String,
+}
+
+
+impl Worksheet {
+    pub fn new(path: String) -> Worksheet {
+        Worksheet {
+            row_length: 0,
+            num_rows: 0,
+            workbook: Workbook{ path },
+            name: String::new(),
+            position: 0,
+            location_in_zip_file: String::new(),
+        }
+    }
+}
+
+
+/*
+ * # ISO/IEC 29500:2011 in Part 1, section 18.8.30
+STANDARD_STYLES = {
+    '0' : 'General',
+    '1' : '0',
+    '2' : '0.00',
+    '3' : '#,##0',
+    '4' : '#,##0.00',
+    '9' : '0%',
+    '10' : '0.00%',
+    '11' : '0.00E+00',
+    '12' : '# ?/?',
+    '13' : '# ??/??',
+    '14' : 'mm-dd-yy',
+    '15' : 'd-mmm-yy',
+    '16' : 'd-mmm',
+    '17' : 'mmm-yy',
+    '18' : 'h:mm AM/PM',
+    '19' : 'h:mm:ss AM/PM',
+    '20' : 'h:mm',
+    '21' : 'h:mm:ss',
+    '22' : 'm/d/yy h:mm',
+    '37' : '#,##0 ;(#,##0)',
+    '38' : '#,##0 ;[Red](#,##0)',
+    '39' : '#,##0.00;(#,##0.00)',
+    '40' : '#,##0.00;[Red](#,##0.00)',
+    '45' : 'mm:ss',
+    '46' : '[h]:mm:ss',
+    '47' : 'mmss.0',
+    '48' : '##0.0E+0',
+    '49' : '@',
+}
+*/

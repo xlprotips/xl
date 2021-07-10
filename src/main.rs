@@ -1,40 +1,35 @@
-mod xl;
 
 use std::fs;
-// use std::io;
 
 fn main() {
-    println!("\nNumber -> Letter:");
-    println!("   23 = {:?}", xl::col_num_to_letter(23));
-    println!("   27 = {:?}", xl::col_num_to_letter(27));
-    println!("   28 = {:?}", xl::col_num_to_letter(28));
-    println!("16384 = {:?}", xl::col_num_to_letter(16384));
-    println!("16385 = {:?}", xl::col_num_to_letter(16385));
-    println!("    0 = {:?}", xl::col_num_to_letter(0));
-
-    println!("\nLetter -> Number:");
-    println!("  W = {:?}", xl::col_letter_to_num("W"));
-    println!(" AA = {:?}", xl::col_letter_to_num("AA"));
-    println!(" AB = {:?}", xl::col_letter_to_num("AB"));
-    println!("XFD = {:?}", xl::col_letter_to_num("XFD"));
-    println!(" ab = {:?}", xl::col_letter_to_num("ab"));
-    println!("xfd = {:?}", xl::col_letter_to_num("xfd"));
-    println!("xfe = {:?}", xl::col_letter_to_num("xfe"));
-    println!(" 12 = {:?}", xl::col_letter_to_num("12"));
-    println!("  ; = {:?}", xl::col_letter_to_num(";"));
     std::process::exit(real_main());
 }
 
 fn real_main() -> i32 {
     let args: Vec<_> = std::env::args().collect();
     if args.len() < 2 {
-        println!("Usage: {} <filename>", args[0]);
+        println!("Usage: {} <filename> [-s <sheetname>]", args[0]);
         return 1;
     }
-    let fname = std::path::Path::new(&*args[1]);
+    let _ = std::path::Path::new(&*args[1]);
+    let fname = std::path::Path::new("sample0.xlsx");
     let file = fs::File::open(&fname).unwrap();
+    // let _ = sxl::Worksheet::new(String::from("Test"));
 
     let mut archive = zip::ZipArchive::new(file).unwrap();
+
+    {
+        let file = archive.by_name("wip").unwrap();
+        let outpath = match file.enclosed_name() {
+            Some(path) => path.to_owned(),
+            None => panic!("Could not find tab 'wip'"),
+        };
+        println!(
+            "'wip' tab: \"{}\" ({} bytes)",
+            outpath.display(),
+            file.size()
+        );
+    }
 
     for i in 0..archive.len() {
         let file = archive.by_index(i).unwrap();
@@ -43,43 +38,16 @@ fn real_main() -> i32 {
             None => continue,
         };
 
-        {
-            let comment = file.comment();
-            if !comment.is_empty() {
-                println!("File {} comment: {}", i, comment);
-            }
-        }
-
         if (&*file.name()).ends_with('/') {
-            println!("File {} extracted to \"{}\"", i, outpath.display());
-            // fs::create_dir_all(&outpath).unwrap();
+            println!("File {}: \"{}\"", i, outpath.display());
         } else {
             println!(
-                "File {} extracted to \"{}\" ({} bytes)",
+                "File {}: \"{}\" ({} bytes)",
                 i,
                 outpath.display(),
                 file.size()
             );
-            if let Some(p) = outpath.parent() {
-                if !p.exists() {
-                    // fs::create_dir_all(&p).unwrap();
-                }
-            }
-            // let mut outfile = fs::File::create(&outpath).unwrap();
-            // io::copy(&mut file, &mut outfile).unwrap();
         }
-
-        /*
-        // Get and Set permissions
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-
-            if let Some(mode) = file.unix_mode() {
-                fs::set_permissions(&outpath, fs::Permissions::from_mode(mode)).unwrap();
-            }
-        }
-        */
     }
     return 0;
 }
