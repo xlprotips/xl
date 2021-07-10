@@ -1,0 +1,11 @@
+[package]
+name = "xat"
+version = "0.1.0"
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+zip = "0.5.13"
+quick-xml = "0.22.0"
+regex = "1.5.4"
