@@ -1,5 +1,11 @@
 use std::convert::TryInto;
+use std::fs;
+use std::io::BufReader;
 use regex::Regex;
+use quick_xml::Reader;
+use quick_xml::events::Event;
+use zip::ZipArchive;
+
 
 const XL_MAX_COL: u16 = 16384;
 const XL_MIN_COL: u16 = 1;
@@ -109,9 +115,132 @@ pub fn col_letter_to_num(letter: &str) -> Option<u16> {
     Some(num)
 }
 
+pub enum DateSystem {
+    V1900,
+    V1904,
+}
 
 pub struct Workbook {
     pub path: String,
+    pub xls: ZipArchive<fs::File>,
+    pub encoding: String,
+    pub date_system: DateSystem,
+}
+
+impl Workbook {
+    /// Return list of all sheet names in workbook
+    pub fn sheets(&mut self) -> Vec<String> {
+        match self.xls.by_name("xl/_rels/workbook.xml.rels") {
+            Ok(rels) => {
+                // Looking for tree structure like:
+                //   Relationships
+                //     Relationship(id = "abc", target = "def")
+                //     Relationship(id = "ghi", target = "lkm")
+                //     etc.
+                //  Each relationship contains an id that is used to reference
+                //  the sheet and a target which tells us where we can find the
+                //  sheet in the zip file.
+                //
+                //  Uncomment the following line to print out a copy of what
+                //  the xml looks like (will probably not be too big).
+                // let _ = std::io::copy(&mut rels, &mut std::io::stdout());
+
+                let reader = BufReader::new(rels);
+                let mut reader = Reader::from_reader(reader);
+                reader.trim_text(true);
+                // let mut buf: Vec<u8> = vec![];
+                // let _ = std::io::copy(&mut rels, &mut buf);
+
+                let mut count = 0;
+                let mut txt = Vec::new();
+                let mut buf = Vec::new();
+                // The `Reader` does not implement `Iterator` because it outputs borrowed data (`Cow`s)
+                loop {
+                    match reader.read_event(&mut buf) {
+                        Ok(Event::Start(ref e)) if e.name() == b"Relationships" => println!("Relationship: {:?}", e),
+                        // for triggering namespaced events, use this instead:
+                        // match reader.read_namespaced_event(&mut buf) {
+                        Ok(Event::Start(ref e)) => {
+                            // for namespaced:
+                            // Ok((ref namespace_value, Event::Start(ref e)))
+                            println!("{:?}", e.name());
+                            match e.name() {
+                                b"tag1" => println!("attributes values: {:?}",
+                                                    e.attributes().map(|a| a.unwrap().value)
+                                                    .collect::<Vec<_>>()),
+                                b"tag2" => count += 1,
+                                _ => (),
+                            }
+                        },
+                        Ok(Event::Empty(ref e)) => {
+                            match e.name() {
+                                b"Relationship" => {
+                                    // let atts = e.attributes();
+                                    e.attributes()
+                                        .for_each(|a| {
+                                            let a = a.unwrap();
+                                            if a.key != b"Id" && a.key != b"Target" { return }
+                                            println!(
+                                                "{} = {}",
+                                                String::from_utf8(a.key.to_vec()).unwrap(),
+                                                String::from_utf8(a.value.to_vec()).unwrap(),);
+                                        });
+                                },
+                                _ => println!("Unknown"),
+                            }
+                        },
+                        // unescape and decode the text event using the reader encoding
+                        Ok(Event::Text(e)) => txt.push(e.unescape_and_decode(&reader).unwrap()),
+                        Ok(Event::Eof) => break, // exits the loop when reaching end of file
+                        Err(e) => panic!("Error at position {}: {:?}", reader.buffer_position(), e),
+                        // Ok(e) => println!("{:?}", e), // There are several other `Event`s we do not consider here
+                        _ => (), // There are several other `Event`s we do not consider here
+                    }
+                    // if we don't keep a borrow elsewhere, we can clear the buffer to keep memory usage low
+                    buf.clear();
+                }
+                println!("count: {}", count);
+                println!("txt: {:?}", txt);
+
+
+                /*
+                let mut buf = Vec::new();
+                loop {
+                    match reader.read_event(&mut buf) {
+                        Ok(Event::Start(ref e)) if e.name() == b"this_tag" => {
+                            println!("this_tag");
+                        },
+                        Ok(Event::End(ref e)) if e.name() == b"this_tag" => {
+                            println!("/this_tag");
+                        },
+                        Ok(Event::Eof) => break,
+                        Ok(e) => println!("E? {:?}", e),
+                        Err(e) => panic!("Error at position {}: {:?}", reader.buffer_position(), e),
+                    }
+                    buf.clear();
+                }
+                */
+
+                vec![String::from("Sheets!")]
+            },
+            Err(_) => vec![]
+        }
+    }
+
+    pub fn new(path: String) -> Option<Self> {
+        if !std::path::Path::new(&path).exists() { return None }
+        let zip_file = fs::File::open(&path).unwrap();
+        if let Ok(xls) = zip::ZipArchive::new(zip_file) {
+            Some(Workbook {
+                path,
+                xls,
+                encoding: String::from("utf8"),
+                date_system: DateSystem::V1900,
+            })
+        } else {
+            return None
+        }
+    }
 }
 
 
@@ -125,19 +254,6 @@ pub struct Worksheet {
     pub location_in_zip_file: String,
 }
 
-
-impl Worksheet {
-    pub fn new(path: String) -> Worksheet {
-        Worksheet {
-            row_length: 0,
-            num_rows: 0,
-            workbook: Workbook{ path },
-            name: String::new(),
-            position: 0,
-            location_in_zip_file: String::new(),
-        }
-    }
-}
 
 
 /*
