@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::convert::TryInto;
 use std::fs;
 use std::io::BufReader;
@@ -128,8 +129,12 @@ pub struct Workbook {
 }
 
 impl Workbook {
-    /// Return list of all sheet names in workbook
-    pub fn sheets(&mut self) -> Vec<String> {
+    /// xlsx zips contain an xml file that has a mapping of "ids" to "targets." The ids are used
+    /// to uniquely identify sheets within the file. The targets have information on where the
+    /// sheets can be found within the zip. This function returns a hashmap of id -> target so that
+    /// you can quickly determine the name of the sheet xml file within the zip.
+    fn rels(&mut self) -> HashMap<String, String> {
+        let mut map = HashMap::new();
         match self.xls.by_name("xl/_rels/workbook.xml.rels") {
             Ok(rels) => {
                 // Looking for tree structure like:
@@ -148,83 +153,48 @@ impl Workbook {
                 let reader = BufReader::new(rels);
                 let mut reader = Reader::from_reader(reader);
                 reader.trim_text(true);
-                // let mut buf: Vec<u8> = vec![];
-                // let _ = std::io::copy(&mut rels, &mut buf);
 
-                let mut count = 0;
-                let mut txt = Vec::new();
                 let mut buf = Vec::new();
-                // The `Reader` does not implement `Iterator` because it outputs borrowed data (`Cow`s)
                 loop {
                     match reader.read_event(&mut buf) {
-                        Ok(Event::Start(ref e)) if e.name() == b"Relationships" => println!("Relationship: {:?}", e),
-                        // for triggering namespaced events, use this instead:
-                        // match reader.read_namespaced_event(&mut buf) {
-                        Ok(Event::Start(ref e)) => {
-                            // for namespaced:
-                            // Ok((ref namespace_value, Event::Start(ref e)))
-                            println!("{:?}", e.name());
-                            match e.name() {
-                                b"tag1" => println!("attributes values: {:?}",
-                                                    e.attributes().map(|a| a.unwrap().value)
-                                                    .collect::<Vec<_>>()),
-                                b"tag2" => count += 1,
-                                _ => (),
-                            }
-                        },
                         Ok(Event::Empty(ref e)) => {
                             match e.name() {
                                 b"Relationship" => {
-                                    // let atts = e.attributes();
+                                    let mut id = String::new();
+                                    let mut target = String::new();
                                     e.attributes()
                                         .for_each(|a| {
                                             let a = a.unwrap();
-                                            if a.key != b"Id" && a.key != b"Target" { return }
-                                            println!(
-                                                "{} = {}",
-                                                String::from_utf8(a.key.to_vec()).unwrap(),
-                                                String::from_utf8(a.value.to_vec()).unwrap(),);
+                                            if a.key == b"Id" {
+                                                id = String::from_utf8(a.value.to_vec()).unwrap();
+                                            }
+                                            if a.key == b"Target" {
+                                                target = String::from_utf8(a.value.to_vec()).unwrap();
+                                            }
                                         });
+                                    map.insert(id, target);
                                 },
-                                _ => println!("Unknown"),
+                                _ => (),
                             }
                         },
-                        // unescape and decode the text event using the reader encoding
-                        Ok(Event::Text(e)) => txt.push(e.unescape_and_decode(&reader).unwrap()),
                         Ok(Event::Eof) => break, // exits the loop when reaching end of file
                         Err(e) => panic!("Error at position {}: {:?}", reader.buffer_position(), e),
-                        // Ok(e) => println!("{:?}", e), // There are several other `Event`s we do not consider here
                         _ => (), // There are several other `Event`s we do not consider here
                     }
-                    // if we don't keep a borrow elsewhere, we can clear the buffer to keep memory usage low
                     buf.clear();
                 }
-                println!("count: {}", count);
-                println!("txt: {:?}", txt);
 
-
-                /*
-                let mut buf = Vec::new();
-                loop {
-                    match reader.read_event(&mut buf) {
-                        Ok(Event::Start(ref e)) if e.name() == b"this_tag" => {
-                            println!("this_tag");
-                        },
-                        Ok(Event::End(ref e)) if e.name() == b"this_tag" => {
-                            println!("/this_tag");
-                        },
-                        Ok(Event::Eof) => break,
-                        Ok(e) => println!("E? {:?}", e),
-                        Err(e) => panic!("Error at position {}: {:?}", reader.buffer_position(), e),
-                    }
-                    buf.clear();
-                }
-                */
-
-                vec![String::from("Sheets!")]
+                map
             },
-            Err(_) => vec![]
+            Err(_) => map
         }
+    }
+
+    /// Return list of all sheet names in workbook
+    pub fn sheets(&mut self) -> Vec<String> {
+        let rels = self.rels();
+        println!("{:?}", rels);
+        vec![]
     }
 
     pub fn new(path: String) -> Option<Self> {
