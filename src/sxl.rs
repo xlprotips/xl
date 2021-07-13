@@ -1,3 +1,5 @@
+mod ws;
+
 use std::collections::HashMap;
 use std::convert::TryInto;
 use std::fs;
@@ -5,7 +7,9 @@ use std::io::BufReader;
 use regex::Regex;
 use quick_xml::Reader;
 use quick_xml::events::Event;
+use quick_xml::events::attributes::Attribute;
 use zip::ZipArchive;
+pub use ws::Worksheet;
 
 
 const XL_MAX_COL: u16 = 16384;
@@ -86,6 +90,51 @@ mod tests {
             assert_eq!(col_letter_to_num(";"), None);
         }
     }
+
+    mod access {
+        use super::super::*;
+
+        #[test]
+        fn open_wb() {
+            let wb = Workbook::open("tests/data/Book1.xlsx".to_string());
+            assert!(wb.is_some());
+        }
+
+        #[test]
+        fn all_sheets() {
+            let mut wb = Workbook::open("tests/data/Book1.xlsx".to_string()).unwrap();
+            let num_sheets = wb.sheets().len();
+            assert_eq!(num_sheets, 4);
+        }
+
+        #[test]
+        fn sheet_by_name_exists() {
+            let mut wb = Workbook::open("tests/data/Book1.xlsx".to_string()).unwrap();
+            let sheets = wb.sheets();
+            assert!(sheets.get("Time").is_some());
+        }
+
+        #[test]
+        fn sheet_by_num_exists() {
+            let mut wb = Workbook::open("tests/data/Book1.xlsx".to_string()).unwrap();
+            let sheets = wb.sheets();
+            assert!(sheets.get(1).is_some());
+        }
+
+        #[test]
+        fn sheet_by_name_not_exists() {
+            let mut wb = Workbook::open("tests/data/Book1.xlsx".to_string()).unwrap();
+            let sheets = wb.sheets();
+            assert!(!sheets.get("Unknown").is_some());
+        }
+
+        #[test]
+        fn sheet_by_num_not_exists() {
+            let mut wb = Workbook::open("tests/data/Book1.xlsx".to_string()).unwrap();
+            let sheets = wb.sheets();
+            assert!(!sheets.get(0).is_some());
+        }
+    }
 }
 
 
@@ -116,6 +165,10 @@ pub fn col_letter_to_num(letter: &str) -> Option<u16> {
     Some(num)
 }
 
+fn attr_value(a: &Attribute) -> String {
+    String::from_utf8(a.value.to_vec()).unwrap()
+}
+
 pub enum DateSystem {
     V1900,
     V1904,
@@ -123,9 +176,49 @@ pub enum DateSystem {
 
 pub struct Workbook {
     pub path: String,
-    pub xls: ZipArchive<fs::File>,
+    xls: ZipArchive<fs::File>,
     pub encoding: String,
     pub date_system: DateSystem,
+}
+
+#[derive(Debug)]
+pub struct SheetMap {
+    sheets_by_name: HashMap::<String, usize>,
+    sheets_by_num: Vec<Option<Worksheet>>,
+}
+
+pub enum Sheet<'a> {
+    Name(&'a str),
+    Pos(usize),
+}
+
+pub trait SheetTrait { fn go(&self) -> Sheet; }
+
+impl SheetTrait for &str {
+    fn go(&self) -> Sheet { Sheet::Name(*self) }
+}
+
+impl SheetTrait for usize {
+    fn go(&self) -> Sheet { Sheet::Pos(*self) }
+}
+
+impl SheetMap {
+    pub fn get<T: SheetTrait>(&self, sheet: T) -> Option<&Worksheet> {
+        let sheet = sheet.go();
+        match sheet {
+            Sheet::Name(n) => {
+                match self.sheets_by_name.get(n) {
+                    Some(p) => self.sheets_by_num.get(*p)?.as_ref(),
+                    None => None
+                }
+            },
+            Sheet::Pos(n) => self.sheets_by_num.get(n)?.as_ref(),
+        }
+    }
+
+    pub fn len(&self) -> u8 {
+        (self.sheets_by_num.len() - 1) as u8
+    }
 }
 
 impl Workbook {
@@ -166,10 +259,10 @@ impl Workbook {
                                         .for_each(|a| {
                                             let a = a.unwrap();
                                             if a.key == b"Id" {
-                                                id = String::from_utf8(a.value.to_vec()).unwrap();
+                                                id = attr_value(&a);
                                             }
                                             if a.key == b"Target" {
-                                                target = String::from_utf8(a.value.to_vec()).unwrap();
+                                                target = attr_value(&a);
                                             }
                                         });
                                     map.insert(id, target);
@@ -190,11 +283,66 @@ impl Workbook {
         }
     }
 
-    /// Return list of all sheet names in workbook
-    pub fn sheets(&mut self) -> Vec<String> {
+    /// Return hashmap of all sheets (sheet name -> Worksheet)
+    pub fn sheets(&mut self) -> SheetMap {
         let rels = self.rels();
-        println!("{:?}", rels);
-        vec![]
+        let num_sheets = rels.iter().filter(|(_, v)| v.starts_with("worksheet")).count();
+        let mut sheets = SheetMap {
+            sheets_by_name: HashMap::new(),
+            sheets_by_num: Vec::with_capacity(num_sheets + 1), // never a "0" sheet
+        };
+
+        match self.xls.by_name("xl/workbook.xml") {
+            Ok(wb) => {
+                // let _ = std::io::copy(&mut wb, &mut std::io::stdout());
+
+                let reader = BufReader::new(wb);
+                let mut reader = Reader::from_reader(reader);
+                reader.trim_text(true);
+
+                let mut buf = Vec::new();
+                loop {
+                    match reader.read_event(&mut buf) {
+                        Ok(Event::Empty(ref e)) if e.name() == b"sheet" => {
+                            let mut name = String::new();
+                            let mut id = String::new();
+                            let mut num = 0;
+                            e.attributes()
+                                .for_each(|a| {
+                                    let a = a.unwrap();
+                                    if a.key == b"r:id" {
+                                        id = attr_value(&a);
+                                    }
+                                    if a.key == b"name" {
+                                        name = attr_value(&a);
+                                    }
+                                    if a.key == b"sheetId" {
+                                        if let Ok(r) = attr_value(&a).parse() {
+                                            num = r;
+                                        }
+                                    }
+                                });
+                            sheets.sheets_by_name.insert(name.clone(), num as usize);
+                            let ws = Worksheet {
+                                name,
+                                id,
+                                position: num,
+                            };
+                            while num as usize >= sheets.sheets_by_num.len() {
+                                sheets.sheets_by_num.push(None);
+                            }
+                            sheets.sheets_by_num[num as usize] = Some(ws);
+                        },
+                        Ok(Event::Eof) => break,
+                        Err(e) => panic!("Error at position {}: {:?}", reader.buffer_position(), e),
+                        _ => (),
+                    }
+                    buf.clear();
+                }
+                sheets
+            },
+            Err(_) => sheets
+        }
     }
 
     pub fn new(path: String) -> Option<Self> {
@@ -211,19 +359,9 @@ impl Workbook {
             return None
         }
     }
+
+    pub fn open(path: String) -> Option<Self> { Workbook::new(path) }
 }
-
-
-pub struct Worksheet {
-    // _used_area: 
-    pub row_length: u16,
-    pub num_rows: u32,
-    pub workbook: Workbook,
-    pub name: String,
-    pub position: u8,
-    pub location_in_zip_file: String,
-}
-
 
 
 /*

@@ -17,7 +17,13 @@ fn real_main() -> i32 {
     match sxl::Workbook::new(path) {
         Some(mut wb) => {
             let sheets = wb.sheets();
+            println!("{}", sheets.len());
+            println!("{:?}", sheets.get("wip"));
             println!("{:?}", sheets.get(0));
+            println!("{:?}", sheets.get(1));
+            println!("{:?}", sheets.get(10));
+            println!("{:?}", sheets.get("unknown"));
+            println!("{:?}", sheets.get("Sheet1"));
         },
         None => println!("Could not open workbook:")
     }
