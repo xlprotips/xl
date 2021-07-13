@@ -1,3 +1,23 @@
+//! Rust library to deal with *big* Excel files.
+//!
+//! This library is intended to help you deal with big Excel files. The library was originally
+//! created as a Python library (https://github.com/ktr/sxl) after learning that neither pandas,
+//! openpyxl, xlwings, nor win32com had the ability to open large Excel files without loading them
+//! completely into memory. This doesn't work when you have *huge* Excel files (especially if you
+//! only want to examine a bit of the file - the first 10 rows say). `sxl` (and this library) solve
+//! the problem by parsing the SpreadsheetML / XML xlsx files using a streaming parser. So you can
+//! see the first ten rows of any tab within any Excel file extremely quickly.
+//!
+//! Here is a sample of how you might use this library:
+//!
+//!     use sxl::Workbook;
+//!
+//!     fn main () {
+//!         let wb = sxl::Workbook("/path/to/workbook").unwrap();
+//!         let sheets = wb.sheets();
+//!         let sheet = sheets.get("Sheet1");
+//!     }
+
 mod ws;
 
 use std::collections::HashMap;
@@ -356,12 +376,12 @@ impl Workbook {
         }
     }
 
-    pub fn new(path: String) -> Option<Self> {
+    pub fn new(path: &str) -> Option<Self> {
         if !std::path::Path::new(&path).exists() { return None }
         let zip_file = fs::File::open(&path).unwrap();
         if let Ok(xls) = zip::ZipArchive::new(zip_file) {
             Some(Workbook {
-                path,
+                path: path.to_string(),
                 xls,
                 encoding: String::from("utf8"),
                 date_system: DateSystem::V1900,
@@ -371,7 +391,28 @@ impl Workbook {
         }
     }
 
-    pub fn open(path: String) -> Option<Self> { Workbook::new(path) }
+    pub fn open(path: &str) -> Option<Self> { Workbook::new(path) }
+
+    pub fn contents(&mut self) {
+        for i in 0 .. self.xls.len() {
+            let file = self.xls.by_index(i).unwrap();
+            let outpath = match file.enclosed_name() {
+                Some(path) => path.to_owned(),
+                None => continue,
+            };
+
+            if (&*file.name()).ends_with('/') {
+                println!("File {}: \"{}\"", i, outpath.display());
+            } else {
+                println!(
+                    "File {}: \"{}\" ({} bytes)",
+                    i,
+                    outpath.display(),
+                    file.size()
+                );
+            }
+        }
+    }
 }
 
 
