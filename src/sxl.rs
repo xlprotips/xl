@@ -134,6 +134,13 @@ mod tests {
             let sheets = wb.sheets();
             assert!(!sheets.get(0).is_some());
         }
+
+        #[test]
+        fn correct_sheet_name() {
+            let mut wb = Workbook::open("tests/data/Book1.xlsx".to_string()).unwrap();
+            let sheets = wb.sheets();
+            assert_eq!(sheets.get("Time").unwrap().name, "Time");
+        }
     }
 }
 
@@ -323,11 +330,15 @@ impl Workbook {
                                     }
                                 });
                             sheets.sheets_by_name.insert(name.clone(), num as usize);
-                            let ws = Worksheet {
-                                name,
-                                id,
-                                position: num,
+                            let target = {
+                                let s = rels.get(&id).unwrap();
+                                if s.starts_with("/") {
+                                    s[1..].to_string()
+                                } else {
+                                    "xl/".to_owned() + s
+                                }
                             };
+                            let ws = Worksheet::new(id, name, num, target);
                             while num as usize >= sheets.sheets_by_num.len() {
                                 sheets.sheets_by_num.push(None);
                             }
