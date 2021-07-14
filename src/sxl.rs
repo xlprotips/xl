@@ -13,7 +13,7 @@
 //!     use sxl::Workbook;
 //!
 //!     fn main () {
-//!         let wb = sxl::Workbook("/path/to/workbook").unwrap();
+//!         let mut wb = sxl::Workbook::open("tests/data/Book1.xlsx").unwrap();
 //!         let sheets = wb.sheets();
 //!         let sheet = sheets.get("Sheet1");
 //!     }
@@ -116,48 +116,48 @@ mod tests {
 
         #[test]
         fn open_wb() {
-            let wb = Workbook::open("tests/data/Book1.xlsx".to_string());
+            let wb = Workbook::open("tests/data/Book1.xlsx");
             assert!(wb.is_some());
         }
 
         #[test]
         fn all_sheets() {
-            let mut wb = Workbook::open("tests/data/Book1.xlsx".to_string()).unwrap();
+            let mut wb = Workbook::open("tests/data/Book1.xlsx").unwrap();
             let num_sheets = wb.sheets().len();
             assert_eq!(num_sheets, 4);
         }
 
         #[test]
         fn sheet_by_name_exists() {
-            let mut wb = Workbook::open("tests/data/Book1.xlsx".to_string()).unwrap();
+            let mut wb = Workbook::open("tests/data/Book1.xlsx").unwrap();
             let sheets = wb.sheets();
             assert!(sheets.get("Time").is_some());
         }
 
         #[test]
         fn sheet_by_num_exists() {
-            let mut wb = Workbook::open("tests/data/Book1.xlsx".to_string()).unwrap();
+            let mut wb = Workbook::open("tests/data/Book1.xlsx").unwrap();
             let sheets = wb.sheets();
             assert!(sheets.get(1).is_some());
         }
 
         #[test]
         fn sheet_by_name_not_exists() {
-            let mut wb = Workbook::open("tests/data/Book1.xlsx".to_string()).unwrap();
+            let mut wb = Workbook::open("tests/data/Book1.xlsx").unwrap();
             let sheets = wb.sheets();
             assert!(!sheets.get("Unknown").is_some());
         }
 
         #[test]
         fn sheet_by_num_not_exists() {
-            let mut wb = Workbook::open("tests/data/Book1.xlsx".to_string()).unwrap();
+            let mut wb = Workbook::open("tests/data/Book1.xlsx").unwrap();
             let sheets = wb.sheets();
             assert!(!sheets.get(0).is_some());
         }
 
         #[test]
         fn correct_sheet_name() {
-            let mut wb = Workbook::open("tests/data/Book1.xlsx".to_string()).unwrap();
+            let mut wb = Workbook::open("tests/data/Book1.xlsx").unwrap();
             let sheets = wb.sheets();
             assert_eq!(sheets.get("Time").unwrap().name, "Time");
         }
@@ -196,11 +196,13 @@ fn attr_value(a: &Attribute) -> String {
     String::from_utf8(a.value.to_vec()).unwrap()
 }
 
+#[derive(Debug)]
 pub enum DateSystem {
     V1900,
     V1904,
 }
 
+#[derive(Debug)]
 pub struct Workbook {
     pub path: String,
     xls: ZipArchive<fs::File>,
@@ -209,9 +211,9 @@ pub struct Workbook {
 }
 
 #[derive(Debug)]
-pub struct SheetMap {
+pub struct SheetMap<'a> {
     sheets_by_name: HashMap::<String, usize>,
-    sheets_by_num: Vec<Option<Worksheet>>,
+    sheets_by_num: Vec<Option<Worksheet<'a>>>,
 }
 
 pub enum Sheet<'a> {
@@ -229,7 +231,7 @@ impl SheetTrait for usize {
     fn go(&self) -> Sheet { Sheet::Pos(*self) }
 }
 
-impl SheetMap {
+impl SheetMap<'_> {
     pub fn get<T: SheetTrait>(&self, sheet: T) -> Option<&Worksheet> {
         let sheet = sheet.go();
         match sheet {
@@ -312,6 +314,13 @@ impl Workbook {
 
     /// Return hashmap of all sheets (sheet name -> Worksheet)
     pub fn sheets(&mut self) -> SheetMap {
+        struct WsContainer {
+            id: String,
+            name: String,
+            num: u8,
+            target: String,
+        }
+        let mut sheets_by_num: Vec<Option<WsContainer>> = Vec::new();
         let rels = self.rels();
         let num_sheets = rels.iter().filter(|(_, v)| v.starts_with("worksheet")).count();
         let mut sheets = SheetMap {
@@ -358,11 +367,10 @@ impl Workbook {
                                     "xl/".to_owned() + s
                                 }
                             };
-                            let ws = Worksheet::new(id, name, num, target);
-                            while num as usize >= sheets.sheets_by_num.len() {
-                                sheets.sheets_by_num.push(None);
+                            while num as usize >= sheets_by_num.len() {
+                                sheets_by_num.push(None);
                             }
-                            sheets.sheets_by_num[num as usize] = Some(ws);
+                            sheets_by_num[num as usize] = Some(WsContainer{ id, name, num, target });
                         },
                         Ok(Event::Eof) => break,
                         Err(e) => panic!("Error at position {}: {:?}", reader.buffer_position(), e),
@@ -370,10 +378,20 @@ impl Workbook {
                     }
                     buf.clear();
                 }
-                sheets
             },
-            Err(_) => sheets
+            Err(_) => ()
         }
+        let s: &Workbook = self;
+        for sheet in sheets_by_num {
+            match sheet {
+                Some(sheet) => {
+                    let ws = Worksheet::new(s, sheet.id, sheet.name, sheet.num, sheet.target);
+                    sheets.sheets_by_num.push(Some(ws))
+                },
+                None => sheets.sheets_by_num.push(None),
+            }
+        }
+        sheets
     }
 
     pub fn new(path: &str) -> Option<Self> {

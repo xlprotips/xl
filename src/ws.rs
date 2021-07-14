@@ -1,8 +1,9 @@
 
 use std::fmt;
+use crate::Workbook;
 
 #[derive(Debug)]
-pub struct Worksheet {
+pub struct Worksheet<'a> {
     pub name: String,
     pub position: u8,
     id: String,
@@ -14,11 +15,12 @@ pub struct Worksheet {
     // pub position: u8,
     /// location where we can find this worksheet in its xlsx file
     target: String,
+    wb: &'a Workbook,
 }
 
-impl Worksheet {
-    pub fn new(id: String, name: String, position: u8, target: String) -> Self {
-        Worksheet { name, position, id, target }
+impl<'a> Worksheet<'a> {
+    pub fn new(wb: &'a Workbook, id: String, name: String, position: u8, target: String) -> Self {
+        Worksheet { wb, name, position, id, target }
     }
 
     pub fn rows(&self) -> RowIter {
