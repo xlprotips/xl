@@ -1,4 +1,6 @@
 
+use crate::utils;
+
 use std::fmt;
 use quick_xml::events::Event;
 // use quick_xml::events::attributes::Attribute;
@@ -57,6 +59,9 @@ impl fmt::Display for ExcelValue {
 pub struct Cell {
     pub value: ExcelValue,
     pub formula: String,
+    pub reference: String,
+    pub style: String,
+    pub cell_type: String,
 }
 
 #[derive(Debug)]
@@ -66,11 +71,6 @@ impl fmt::Display for Row {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let vec = &self.0;
         write!(f, "[")?;
-        /*
-        self.0.iter().fold(Ok(()), |result, cell| {
-            result.and_then(|_| write!(f, "--> {}; ", cell))
-        })
-        */
         for (count, v) in vec.iter().enumerate() {
             if count != 0 { write!(f, ", ")?; }
             write!(f, "{}", v)?;
@@ -98,6 +98,16 @@ pub struct RowIter<'a> {
     count: u32,
 }
 
+fn new_cell() -> Cell {
+    Cell {
+        value: ExcelValue::None,
+        formula: "".to_string(),
+        reference: "".to_string(),
+        style: "".to_string(),
+        cell_type: "".to_string(),
+    }
+}
+
 impl Iterator for RowIter<'_> {
     type Item = Row;
 
@@ -106,34 +116,55 @@ impl Iterator for RowIter<'_> {
             self.count += 1;
 
             let mut buf = Vec::new();
-            let next_row = loop {
+            let next_row = {
                 let mut row = Vec::new();
-                match self.worksheet_reader.read_event(&mut buf) {
-                    Ok(Event::Empty(ref e)) => {
-                        match e.name() {
-                            b"c" => {
-                                let c = Cell {
-                                    value: ExcelValue::None,
-                                    formula: "".to_string(),
-                                };
-                                row.push(c)
-                            },
-                            _ => (),
-                        }
-                    },
-                    Ok(Event::End(ref e)) => {
-                        match e.name() {
-                            b"row" => break row,
-                            _ => ()
-                        }
-                    },
-                    Ok(Event::Eof) => {
-                        break row
-                    },
-                    Err(e) => panic!("Error at position {}: {:?}", self.worksheet_reader.buffer_position(), e),
-                    _ => (), // There are several other `Event`s we do not consider here
+                let mut in_cell = false;
+                let mut c = new_cell();
+                loop {
+                    match self.worksheet_reader.read_event(&mut buf) {
+                        Ok(Event::Start(ref e)) => {
+                            match e.name() {
+                                b"c" => {
+                                    in_cell = true;
+                                    e.attributes()
+                                        .for_each(|a| {
+                                            let a = a.unwrap();
+                                            if a.key == b"r" {
+                                                c.reference = utils::attr_value(&a);
+                                            }
+                                            if a.key == b"t" {
+                                                c.cell_type = utils::attr_value(&a);
+                                            }
+                                        });
+                                },
+                                // _ => println!("{:?}", e),
+                                _ => (),
+                            }
+                        },
+                        Ok(Event::End(ref e)) if e.name() == b"c" => {
+                            row.push(c);
+                            c = new_cell();
+                        },
+                        Ok(Event::Text(ref e)) => {
+                            if in_cell {
+                                let txt = e.unescape_and_decode(&self.worksheet_reader).unwrap();
+                                c.formula.push_str(&txt)
+                            }
+                        },
+                        Ok(Event::End(ref e)) => {
+                            match e.name() {
+                                b"row" => break row,
+                                _ => ()
+                            }
+                        },
+                        Ok(Event::Eof) => {
+                            break row
+                        },
+                        Err(e) => panic!("Error at position {}: {:?}", self.worksheet_reader.buffer_position(), e),
+                        _ => (), // There are several other `Event`s we do not consider here
+                    }
+                    buf.clear();
                 }
-                buf.clear();
             };
             Some(Row(next_row))
 
