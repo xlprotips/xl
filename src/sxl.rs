@@ -29,6 +29,7 @@ use quick_xml::Reader;
 use quick_xml::events::Event;
 use quick_xml::events::attributes::Attribute;
 use zip::ZipArchive;
+use zip::read::ZipFile;
 pub use ws::Worksheet;
 
 
@@ -211,9 +212,9 @@ pub struct Workbook {
 }
 
 #[derive(Debug)]
-pub struct SheetMap<'a> {
+pub struct SheetMap {
     sheets_by_name: HashMap::<String, usize>,
-    sheets_by_num: Vec<Option<Worksheet<'a>>>,
+    sheets_by_num: Vec<Option<Worksheet>>,
 }
 
 pub enum Sheet<'a> {
@@ -231,7 +232,7 @@ impl SheetTrait for usize {
     fn go(&self) -> Sheet { Sheet::Pos(*self) }
 }
 
-impl SheetMap<'_> {
+impl SheetMap {
     pub fn get<T: SheetTrait>(&self, sheet: T) -> Option<&Worksheet> {
         let sheet = sheet.go();
         match sheet {
@@ -249,6 +250,8 @@ impl SheetMap<'_> {
         (self.sheets_by_num.len() - 1) as u8
     }
 }
+
+type SheetReader<'a> = Reader<BufReader<ZipFile<'a>>>;
 
 impl Workbook {
     /// xlsx zips contain an xml file that has a mapping of "ids" to "targets." The ids are used
@@ -314,13 +317,6 @@ impl Workbook {
 
     /// Return hashmap of all sheets (sheet name -> Worksheet)
     pub fn sheets(&mut self) -> SheetMap {
-        struct WsContainer {
-            id: String,
-            name: String,
-            num: u8,
-            target: String,
-        }
-        let mut sheets_by_num: Vec<Option<WsContainer>> = Vec::new();
         let rels = self.rels();
         let num_sheets = rels.iter().filter(|(_, v)| v.starts_with("worksheet")).count();
         let mut sheets = SheetMap {
@@ -367,10 +363,10 @@ impl Workbook {
                                     "xl/".to_owned() + s
                                 }
                             };
-                            while num as usize >= sheets_by_num.len() {
-                                sheets_by_num.push(None);
+                            while num as usize >= sheets.sheets_by_num.len() {
+                                sheets.sheets_by_num.push(None);
                             }
-                            sheets_by_num[num as usize] = Some(WsContainer{ id, name, num, target });
+                            sheets.sheets_by_num[num as usize] = Some(Worksheet::new(id, name, num, target));
                         },
                         Ok(Event::Eof) => break,
                         Err(e) => panic!("Error at position {}: {:?}", reader.buffer_position(), e),
@@ -378,20 +374,10 @@ impl Workbook {
                     }
                     buf.clear();
                 }
+                sheets
             },
-            Err(_) => ()
+            Err(_) => sheets
         }
-        let s: &Workbook = self;
-        for sheet in sheets_by_num {
-            match sheet {
-                Some(sheet) => {
-                    let ws = Worksheet::new(s, sheet.id, sheet.name, sheet.num, sheet.target);
-                    sheets.sheets_by_num.push(Some(ws))
-                },
-                None => sheets.sheets_by_num.push(None),
-            }
-        }
-        sheets
     }
 
     pub fn new(path: &str) -> Option<Self> {
@@ -431,6 +417,20 @@ impl Workbook {
             }
         }
     }
+
+    pub fn sheet_reader<'a>(&'a mut self, zip_target: &str) -> SheetReader<'a> {
+        let target = match self.xls.by_name(zip_target) {
+            Ok(ws) => ws,
+            Err(_) => panic!("Could not find worksheet: {}", zip_target)
+        };
+        let reader = BufReader::new(target);
+        let mut reader = Reader::from_reader(reader);
+        reader.trim_text(true);
+        reader
+    }
+
+    pub fn test_mut(&mut self) -> u8 { 5 }
+
 }
 
 

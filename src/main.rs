@@ -1,4 +1,5 @@
 
+
 fn main() {
     std::process::exit(real_main());
 }
@@ -17,7 +18,7 @@ fn real_main() -> i32 {
         Some(mut wb) => {
             let sheets = wb.sheets();
             if let Some(wip) = sheets.get("wip") {
-                for row in wip.rows() {
+                for row in wip.rows(&mut wb) {
                     println!("{}", row);
                 }
             }
