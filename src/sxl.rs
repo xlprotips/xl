@@ -19,6 +19,7 @@
 //!     }
 
 mod ws;
+mod utils;
 
 use std::collections::HashMap;
 use std::convert::TryInto;
@@ -27,7 +28,6 @@ use std::io::BufReader;
 use regex::Regex;
 use quick_xml::Reader;
 use quick_xml::events::Event;
-use quick_xml::events::attributes::Attribute;
 use zip::ZipArchive;
 use zip::read::ZipFile;
 pub use ws::Worksheet;
@@ -193,10 +193,6 @@ pub fn col_letter_to_num(letter: &str) -> Option<u16> {
     Some(num)
 }
 
-fn attr_value(a: &Attribute) -> String {
-    String::from_utf8(a.value.to_vec()).unwrap()
-}
-
 #[derive(Debug)]
 pub enum DateSystem {
     V1900,
@@ -291,10 +287,10 @@ impl Workbook {
                                         .for_each(|a| {
                                             let a = a.unwrap();
                                             if a.key == b"Id" {
-                                                id = attr_value(&a);
+                                                id = utils::attr_value(&a);
                                             }
                                             if a.key == b"Target" {
-                                                target = attr_value(&a);
+                                                target = utils::attr_value(&a);
                                             }
                                         });
                                     map.insert(id, target);
@@ -343,13 +339,13 @@ impl Workbook {
                                 .for_each(|a| {
                                     let a = a.unwrap();
                                     if a.key == b"r:id" {
-                                        id = attr_value(&a);
+                                        id = utils::attr_value(&a);
                                     }
                                     if a.key == b"name" {
-                                        name = attr_value(&a);
+                                        name = utils::attr_value(&a);
                                     }
                                     if a.key == b"sheetId" {
-                                        if let Ok(r) = attr_value(&a).parse() {
+                                        if let Ok(r) = utils::attr_value(&a).parse() {
                                             num = r;
                                         }
                                     }
@@ -423,6 +419,7 @@ impl Workbook {
             Ok(ws) => ws,
             Err(_) => panic!("Could not find worksheet: {}", zip_target)
         };
+        // let _ = std::io::copy(&mut target, &mut std::io::stdout());
         let reader = BufReader::new(target);
         let mut reader = Reader::from_reader(reader);
         reader.trim_text(true);
