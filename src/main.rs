@@ -13,11 +13,12 @@ fn real_main() -> i32 {
     }
     let _ = std::path::Path::new(&*args[1]);
     */
-    let path = String::from("sample.xlsx");
+    // let path = String::from("sample.xlsx");
+    let path = String::from("tests/data/Book1.xlsx");
     match sxl::Workbook::new(&path) {
         Some(mut wb) => {
             let sheets = wb.sheets();
-            if let Some(wip) = sheets.get("wip") {
+            if let Some(wip) = sheets.get("Sheet1") {
                 for row in wip.rows(&mut wb) {
                     println!("{}", row);
                 }
