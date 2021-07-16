@@ -155,7 +155,6 @@ impl<'a> Iterator for RowIter<'a> {
                     Ok(Event::Text(ref e)) if in_value => {
                         let txt = e.unescape_and_decode(&reader).unwrap();
                         if c.cell_type == "s" {
-                            println!("STRINGS!");
                             let pos: usize = txt.parse().unwrap();
                             let s = &strings[pos]; // .to_string()
                             c.value = ExcelValue::String(s)
@@ -167,14 +166,14 @@ impl<'a> Iterator for RowIter<'a> {
                         let txt = e.unescape_and_decode(&reader).unwrap();
                         c.formula.push_str(&txt)
                     },
-                    Ok(Event::End(ref e)) if e.name() == b"row" => break row,
-                    Ok(Event::Eof) => break row,
+                    Ok(Event::End(ref e)) if e.name() == b"row" => break Some(Row(row)),
+                    Ok(Event::Eof) => break None,
                     Err(e) => panic!("Error at position {}: {:?}", reader.buffer_position(), e),
                     _ => (), // There are several other `Event`s we do not consider here
                 }
                 buf.clear();
             }
         };
-        Some(Row(next_row))
+        next_row
     }
 }
