@@ -2,6 +2,7 @@
 use crate::utils;
 
 use std::fmt;
+use std::mem;
 use quick_xml::events::Event;
 // use quick_xml::events::attributes::Attribute;
 use crate::{SheetReader, Workbook};
@@ -28,7 +29,7 @@ impl Worksheet {
 
     pub fn rows<'a>(&self, workbook: &'a mut Workbook) -> RowIter<'a> {
         let reader = workbook.sheet_reader(&self.target);
-        RowIter { worksheet_reader: reader }
+        RowIter { worksheet_reader: reader, want_row: 1, next_row: None }
     }
 }
 
@@ -67,7 +68,7 @@ pub struct Cell<'a> {
 }
 
 #[derive(Debug)]
-pub struct Row<'a>(pub Vec<Cell<'a>>);
+pub struct Row<'a>(pub Vec<Cell<'a>>, pub usize);
 
 impl fmt::Display for Row<'_> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -97,6 +98,8 @@ impl fmt::Display for Cell<'_> {
 
 pub struct RowIter<'a> {
     worksheet_reader: SheetReader<'a>,
+    want_row: usize,
+    next_row: Option<Row<'a>>,
 }
 
 fn new_cell() -> Cell<'static> {
@@ -113,6 +116,28 @@ impl<'a> Iterator for RowIter<'a> {
     type Item = Row<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
+        // the xml in the xlsx file will not contain elements for empty rows. So
+        // we need to "simulate" the empty rows since the user expects to see
+        // them when they iterate over the worksheet.
+        if let Some(Row(_, row_num)) = &self.next_row {
+            // since we are currently buffering a row, we know we will either return it or a
+            // "simulated" (i.e., emtpy) row. So we grab the current row and update the fact that
+            // we will soon want a new row. We then figure out if we have the row we want or if we
+            // need to keep spitting out empty rows.
+            let current_row = self.want_row;
+            self.want_row += 1;
+            if *row_num == current_row {
+                // we finally hit the row we were looking for, so we reset the buffer and return
+                // the row that was sitting in it.
+                let mut r = None;
+                mem::swap(&mut r, &mut self.next_row);
+                return r
+            } else {
+                // otherwise, we must still be sitting behind the row we want. So we return an
+                // empty row to simulate the row that exists in the spreadsheet.
+                return Some(Row(vec![], current_row))
+            }
+        }
         let mut buf = Vec::new();
         let reader = &mut self.worksheet_reader.reader;
         let strings = self.worksheet_reader.strings;
@@ -121,8 +146,12 @@ impl<'a> Iterator for RowIter<'a> {
             let mut in_cell = false;
             let mut in_value = false;
             let mut c = new_cell();
+            let mut this_row: usize = 0;
             loop {
                 match reader.read_event(&mut buf) {
+                    Ok(Event::Start(ref e)) if e.name() == b"row" => {
+                        this_row = utils::get(e.attributes(), b"r").unwrap().parse().unwrap();
+                    },
                     Ok(Event::Start(ref e)) if e.name() == b"c" => {
                         in_cell = true;
                         e.attributes()
@@ -142,14 +171,6 @@ impl<'a> Iterator for RowIter<'a> {
                     Ok(Event::Start(ref e)) if e.name() == b"v" => {
                         in_value = true;
                     },
-                    Ok(Event::End(ref e)) if e.name() == b"v" => {
-                        in_value = false;
-                    },
-                    Ok(Event::End(ref e)) if e.name() == b"c" => {
-                        row.push(c);
-                        c = new_cell();
-                        in_cell = false;
-                    },
                     // note: because v elements are children of c elements,
                     // need this check to go before the 'in_cell' check
                     Ok(Event::Text(ref e)) if in_value => {
@@ -166,14 +187,31 @@ impl<'a> Iterator for RowIter<'a> {
                         let txt = e.unescape_and_decode(&reader).unwrap();
                         c.formula.push_str(&txt)
                     },
-                    Ok(Event::End(ref e)) if e.name() == b"row" => break Some(Row(row)),
+                    Ok(Event::End(ref e)) if e.name() == b"v" => {
+                        in_value = false;
+                    },
+                    Ok(Event::End(ref e)) if e.name() == b"c" => {
+                        row.push(c);
+                        c = new_cell();
+                        in_cell = false;
+                    },
+                    Ok(Event::End(ref e)) if e.name() == b"row" => {
+                        let next_row = Some(Row(row, this_row));
+                        if this_row == self.want_row {
+                            break next_row
+                        } else {
+                            self.next_row = next_row;
+                            break Some(Row(vec![], self.want_row))
+                        }
+                    },
                     Ok(Event::Eof) => break None,
                     Err(e) => panic!("Error at position {}: {:?}", reader.buffer_position(), e),
-                    _ => (), // There are several other `Event`s we do not consider here
+                    _ => (),
                 }
                 buf.clear();
             }
         };
+        self.want_row += 1;
         next_row
     }
 }
