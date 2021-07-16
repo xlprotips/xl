@@ -24,6 +24,7 @@ mod utils;
 use std::collections::HashMap;
 use std::convert::TryInto;
 use std::fs;
+use std::fs::File;
 use std::io::BufReader;
 use regex::Regex;
 use quick_xml::Reader;
@@ -205,6 +206,7 @@ pub struct Workbook {
     xls: ZipArchive<fs::File>,
     pub encoding: String,
     pub date_system: DateSystem,
+    pub strings: Vec<String>,
 }
 
 #[derive(Debug)]
@@ -247,7 +249,10 @@ impl SheetMap {
     }
 }
 
-type SheetReader<'a> = Reader<BufReader<ZipFile<'a>>>;
+pub struct SheetReader<'a> {
+    reader: Reader<BufReader<ZipFile<'a>>>,
+    strings: &'a Vec<String>
+}
 
 impl Workbook {
     /// xlsx zips contain an xml file that has a mapping of "ids" to "targets." The ids are used
@@ -379,12 +384,14 @@ impl Workbook {
     pub fn new(path: &str) -> Option<Self> {
         if !std::path::Path::new(&path).exists() { return None }
         let zip_file = fs::File::open(&path).unwrap();
-        if let Ok(xls) = zip::ZipArchive::new(zip_file) {
+        if let Ok(mut xls) = zip::ZipArchive::new(zip_file) {
+            let strings = strings(&mut xls);
             Some(Workbook {
                 path: path.to_string(),
                 xls,
                 encoding: String::from("utf8"),
                 date_system: DateSystem::V1900,
+                strings,
             })
         } else {
             return None
@@ -423,11 +430,34 @@ impl Workbook {
         let reader = BufReader::new(target);
         let mut reader = Reader::from_reader(reader);
         reader.trim_text(true);
-        reader
+        SheetReader { reader, strings: &self.strings }
+        // SheetReader { reader, get_string: &self.get_string }
     }
 
-    pub fn test_mut(&mut self) -> u8 { 5 }
+}
 
+
+fn strings(zip_file: &mut ZipArchive<File>) -> Vec<String> {
+    let mut strings = Vec::new();
+    match zip_file.by_name("xl/sharedStrings.xml") {
+        Ok(strings_file) => {
+            let reader = BufReader::new(strings_file);
+            let mut reader = Reader::from_reader(reader);
+            reader.trim_text(true);
+            let mut buf = Vec::new();
+            loop {
+                match reader.read_event(&mut buf) {
+                    Ok(Event::Text(ref e)) => strings.push(e.unescape_and_decode(&reader).unwrap()),
+                    Ok(Event::Eof) => break, // exits the loop when reaching end of file
+                    Err(e) => panic!("Error at position {}: {:?}", reader.buffer_position(), e),
+                    _ => (), // There are several other `Event`s we do not consider here
+                }
+                buf.clear();
+            }
+            strings
+        },
+        Err(_) => strings
+    }
 }
 
 
