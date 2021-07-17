@@ -206,7 +206,8 @@ pub struct Workbook {
     xls: ZipArchive<fs::File>,
     pub encoding: String,
     pub date_system: DateSystem,
-    pub strings: Vec<String>,
+    strings: Vec<String>,
+    styles: Vec<String>,
 }
 
 #[derive(Debug)]
@@ -251,7 +252,8 @@ impl SheetMap {
 
 pub struct SheetReader<'a> {
     reader: Reader<BufReader<ZipFile<'a>>>,
-    strings: &'a Vec<String>
+    strings: &'a Vec<String>,
+    styles: &'a Vec<String>,
 }
 
 impl Workbook {
@@ -387,12 +389,14 @@ impl Workbook {
         let zip_file = fs::File::open(&path).unwrap();
         if let Ok(mut xls) = zip::ZipArchive::new(zip_file) {
             let strings = strings(&mut xls);
+            let styles = find_styles(&mut xls);
             Some(Workbook {
                 path: path.to_string(),
                 xls,
                 encoding: String::from("utf8"),
                 date_system: DateSystem::V1900,
                 strings,
+                styles,
             })
         } else {
             return None
@@ -432,7 +436,7 @@ impl Workbook {
         let reader = BufReader::new(target);
         let mut reader = Reader::from_reader(reader);
         reader.trim_text(true);
-        SheetReader { reader, strings: &self.strings }
+        SheetReader { reader, strings: &self.strings, styles: &self.styles }
     }
 
 }
@@ -462,36 +466,79 @@ fn strings(zip_file: &mut ZipArchive<File>) -> Vec<String> {
 }
 
 
-/*
- * # ISO/IEC 29500:2011 in Part 1, section 18.8.30
-STANDARD_STYLES = {
-    '0' : 'General',
-    '1' : '0',
-    '2' : '0.00',
-    '3' : '#,##0',
-    '4' : '#,##0.00',
-    '9' : '0%',
-    '10' : '0.00%',
-    '11' : '0.00E+00',
-    '12' : '# ?/?',
-    '13' : '# ??/??',
-    '14' : 'mm-dd-yy',
-    '15' : 'd-mmm-yy',
-    '16' : 'd-mmm',
-    '17' : 'mmm-yy',
-    '18' : 'h:mm AM/PM',
-    '19' : 'h:mm:ss AM/PM',
-    '20' : 'h:mm',
-    '21' : 'h:mm:ss',
-    '22' : 'm/d/yy h:mm',
-    '37' : '#,##0 ;(#,##0)',
-    '38' : '#,##0 ;[Red](#,##0)',
-    '39' : '#,##0.00;(#,##0.00)',
-    '40' : '#,##0.00;[Red](#,##0.00)',
-    '45' : 'mm:ss',
-    '46' : '[h]:mm:ss',
-    '47' : 'mmss.0',
-    '48' : '##0.0E+0',
-    '49' : '@',
+/// find the number of rows and columns used in a particular worksheet. takes the workbook xlsx
+/// location as its first parameter, and the location of the worksheet in question (within the zip)
+/// as the second parameter. Returns a tuple of (rows, columns) in the worksheet.
+fn find_styles(xlsx: &mut ZipArchive<fs::File>) -> Vec<String> {
+    let mut styles = Vec::new();
+    let mut number_formats = standard_styles();
+    let styles_xml = match xlsx.by_name("xl/styles.xml") {
+        Ok(s) => s,
+        Err(_) => return styles
+    };
+    // let _ = std::io::copy(&mut styles_xml, &mut std::io::stdout());
+    let reader = BufReader::new(styles_xml);
+    let mut reader = Reader::from_reader(reader);
+    reader.trim_text(true);
+    let mut buf = Vec::new();
+    loop {
+        match reader.read_event(&mut buf) {
+            Ok(Event::Empty(ref e)) if e.name() == b"numFmt" => {
+                let id = utils::get(e.attributes(), b"numFmtId").unwrap();
+                let code = utils::get(e.attributes(), b"formatCode").unwrap();
+                number_formats.insert(id, code);
+            },
+            Ok(Event::Start(ref e)) if e.name() == b"xf" => {
+                let id = utils::get(e.attributes(), b"numFmtId").unwrap();
+                if number_formats.contains_key(&id) {
+                    styles.push(number_formats.get(&id).unwrap().to_string());
+                }
+            },
+            Ok(Event::Eof) => break,
+            Err(e) => panic!("Error at position {}: {:?}", reader.buffer_position(), e),
+            _ => (),
+        }
+        buf.clear();
+    }
+    return styles
 }
-*/
+
+/// Return hashmap of standard styles (ISO/IEC 29500:2011 in Part 1, section 18.8.30)
+fn standard_styles() -> HashMap<String, String> {
+    let mut styles = HashMap::new();
+    let standard_styles = [
+        ["0", "General",],
+        ["1", "0",],
+        ["2", "0.00",],
+        ["3", "#,##0",],
+        ["4", "#,##0.00",],
+        ["9", "0%",],
+        ["10", "0.00%",],
+        ["11", "0.00E+00",],
+        ["12", "# ?/?",],
+        ["13", "# ??/??",],
+        ["14", "mm-dd-yy",],
+        ["15", "d-mmm-yy",],
+        ["16", "d-mmm",],
+        ["17", "mmm-yy",],
+        ["18", "h:mm AM/PM",],
+        ["19", "h:mm:ss AM/PM",],
+        ["20", "h:mm",],
+        ["21", "h:mm:ss",],
+        ["22", "m/d/yy h:mm",],
+        ["37", "#,##0 ;(#,##0)",],
+        ["38", "#,##0 ;[Red](#,##0)",],
+        ["39", "#,##0.00;(#,##0.00)",],
+        ["40", "#,##0.00;[Red](#,##0.00)",],
+        ["45", "mm:ss",],
+        ["46", "[h]:mm:ss",],
+        ["47", "mmss.0",],
+        ["48", "##0.0E+0",],
+        ["49", "@",],
+    ];
+    for i in 0 .. standard_styles.len() {
+        let [id, code] = standard_styles[i];
+        styles.insert(id.to_string(), code.to_string());
+    }
+    styles
+}
