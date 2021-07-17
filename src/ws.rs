@@ -66,7 +66,7 @@ pub fn find_used_area(xlsx: &str, worksheet: &str) -> WorksheetDimensions {
                 }
             }
         },
-        None => panic!("Could not find used area of worksheet")
+        None => WorksheetDimensions { num_rows: 0, num_columns: 0 }
     }
 }
 
