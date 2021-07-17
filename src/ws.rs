@@ -98,6 +98,7 @@ impl Worksheet {
             next_row: None,
             num_cols: self.ncols(),
             num_rows: self.nrows(),
+            done_file: false,
         }
     }
 
@@ -198,6 +199,7 @@ pub struct RowIter<'a> {
     next_row: Option<Row<'a>>,
     num_rows: u32,
     num_cols: u16,
+    done_file: bool,
 }
 
 fn new_cell() -> Cell<'static> {
@@ -208,6 +210,17 @@ fn new_cell() -> Cell<'static> {
         style: "".to_string(),
         cell_type: "".to_string(),
     }
+}
+
+fn empty_row(num_cols: u16, this_row: usize) -> Option<Row<'static>> {
+    let mut row = vec![];
+    for n in 0..num_cols {
+        let mut c = new_cell();
+        c.reference.push_str(&crate::num2col(n + 1).unwrap());
+        c.reference.push_str(&this_row.to_string());
+        row.push(c);
+    }
+    Some(Row(row, this_row))
 }
 
 impl<'a> Iterator for RowIter<'a> {
@@ -233,14 +246,16 @@ impl<'a> Iterator for RowIter<'a> {
             } else {
                 // otherwise, we must still be sitting behind the row we want. So we return an
                 // empty row to simulate the row that exists in the spreadsheet.
-                return Some(Row(vec![], current_row))
+                return empty_row(self.num_cols, current_row)
             }
+        } else if self.done_file && self.want_row < self.num_rows as usize {
+            self.want_row += 1;
+            return empty_row(self.num_cols, self.want_row - 1)
         }
         let mut buf = Vec::new();
         let reader = &mut self.worksheet_reader.reader;
         let strings = self.worksheet_reader.strings;
         let next_row = {
-            println!("TODO: USE num_rows: {}", self.num_rows);
             let mut row: Vec<Cell> = Vec::with_capacity(self.num_cols as usize);
             let mut in_cell = false;
             let mut in_value = false;
@@ -327,7 +342,7 @@ impl<'a> Iterator for RowIter<'a> {
                             break next_row
                         } else {
                             self.next_row = next_row;
-                            break Some(Row(vec![], self.want_row))
+                            break empty_row(self.num_cols, self.want_row)
                         }
                     },
                     Ok(Event::Eof) => break None,
@@ -338,6 +353,10 @@ impl<'a> Iterator for RowIter<'a> {
             }
         };
         self.want_row += 1;
+        if next_row.is_none() && self.want_row - 1 < self.num_rows as usize {
+            self.done_file = true;
+            return empty_row(self.num_cols, self.want_row - 1);
+        }
         next_row
     }
 }
