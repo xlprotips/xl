@@ -1,6 +1,7 @@
 
 use crate::utils;
 
+use std::cmp;
 use std::fmt;
 use std::mem;
 use quick_xml::events::Event;
@@ -314,6 +315,13 @@ impl<'a> Iterator for RowIter<'a> {
                         in_cell = false;
                     },
                     Ok(Event::End(ref e)) if e.name() == b"row" => {
+                        self.num_cols = cmp::max(self.num_cols, row.len() as u16);
+                        while row.len() < self.num_cols as usize {
+                            let mut cell = new_cell();
+                            cell.reference.push_str(&crate::num2col(row.len() as u16 + 1).unwrap());
+                            cell.reference.push_str(&this_row.to_string());
+                            row.push(cell);
+                        }
                         let next_row = Some(Row(row, this_row));
                         if this_row == self.want_row {
                             break next_row
