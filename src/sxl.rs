@@ -26,7 +26,6 @@ use std::convert::TryInto;
 use std::fs;
 use std::fs::File;
 use std::io::BufReader;
-use regex::Regex;
 use quick_xml::Reader;
 use quick_xml::events::Event;
 use zip::ZipArchive;
@@ -184,10 +183,9 @@ pub fn num2col(n: u16) -> Option<String> {
 /// Return column number for column letter `letter`
 pub fn col2num(letter: &str) -> Option<u16> {
     let letter = letter.to_uppercase();
-    let re = Regex::new(r"[A-Z]+").unwrap();
-    if !re.is_match(&letter) { return None }
     let mut num: u16 = 0;
     for c in letter.chars() {
+        if c < 'A' || c > 'Z' { return None }
         num = num * 26 + ((c as u16) - ('A' as u16)) + 1;
     }
     if num > XL_MAX_COL || num < XL_MIN_COL { return None }
