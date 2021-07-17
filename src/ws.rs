@@ -8,6 +8,67 @@ use quick_xml::events::Event;
 use crate::{SheetReader, Workbook};
 
 #[derive(Debug)]
+pub struct WorksheetDimensions {
+    num_rows: u32,
+    num_columns: u16,
+}
+
+/// find the number of rows and columns used in a particular worksheet. takes the workbook xlsx
+/// location as its first parameter, and the location of the worksheet in question (within the zip)
+/// as the second parameter. Returns a tuple of (rows, columns) in the worksheet.
+pub fn find_used_area(xlsx: &str, worksheet: &str) -> WorksheetDimensions {
+    let mut wb = Workbook::open(xlsx).unwrap();
+    let mut reader = wb.sheet_reader(worksheet).reader;
+    let mut buf = Vec::new();
+    let used_area = loop {
+        match reader.read_event(&mut buf) {
+            Ok(Event::Empty(ref e)) if e.name() == b"dimension" => {
+                let used_area = utils::get(e.attributes(), b"ref").unwrap();
+                if used_area != "A1" {
+                    break Some(used_area)
+                }
+            },
+            Ok(Event::Start(ref e)) if e.name() == b"sheetData" => {
+                break Some("A1:A1".to_string())
+            },
+            Ok(Event::Eof) => break None,
+            Err(e) => panic!("Error at position {}: {:?}", reader.buffer_position(), e),
+            _ => (),
+        }
+        buf.clear();
+    };
+    match used_area {
+        Some(used_area) => {
+            let mut end: isize = -1;
+            for (i, c) in used_area.chars().enumerate() {
+                if c == ':' { end = i as isize; break }
+            }
+            if end == -1 {
+                WorksheetDimensions { num_rows: 0, num_columns: 0 }
+            } else {
+                let end_range = &used_area[end as usize..];
+                let mut end = 0;
+                // note, the extra '1' (in various spots below) is to deal with the ':' part of the
+                // range
+                for (i, c) in end_range[1..].chars().enumerate() {
+                    if !c.is_ascii_alphabetic() {
+                        end = i + 1;
+                        break
+                    }
+                }
+                let col = crate::col2num(&end_range[1..end]).unwrap();
+                let row: u32 = end_range[end..].parse().unwrap();
+                WorksheetDimensions {
+                    num_rows: row,
+                    num_columns: col,
+                }
+            }
+        },
+        None => panic!("Could not find used area of worksheet")
+    }
+}
+
+#[derive(Debug)]
 pub struct Worksheet {
     pub name: String,
     pub position: u8,
@@ -20,11 +81,12 @@ pub struct Worksheet {
     // pub position: u8,
     /// location where we can find this worksheet in its xlsx file
     target: String,
+    dimensions: WorksheetDimensions,
 }
 
 impl Worksheet {
-    pub fn new(id: String, name: String, position: u8, target: String) -> Self {
-        Worksheet { name, position, id, target }
+    pub fn new(id: String, name: String, position: u8, target: String, dimensions: WorksheetDimensions) -> Self {
+        Worksheet { name, position, id, target, dimensions }
     }
 
     pub fn rows<'a>(&self, workbook: &'a mut Workbook) -> RowIter<'a> {

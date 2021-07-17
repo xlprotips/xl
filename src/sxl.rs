@@ -367,7 +367,8 @@ impl Workbook {
                             while num as usize >= sheets.sheets_by_num.len() {
                                 sheets.sheets_by_num.push(None);
                             }
-                            sheets.sheets_by_num[num as usize] = Some(Worksheet::new(id, name, num, target));
+                            let dims = ws::find_used_area(&self.path, &target);
+                            sheets.sheets_by_num[num as usize] = Some(Worksheet::new(id, name, num, target, dims));
                         },
                         Ok(Event::Eof) => break,
                         Err(e) => panic!("Error at position {}: {:?}", reader.buffer_position(), e),
@@ -421,6 +422,7 @@ impl Workbook {
         }
     }
 
+    /// returns a SheetReader for the given worksheet that can be used to iterate over rows, etc.
     pub fn sheet_reader<'a>(&'a mut self, zip_target: &str) -> SheetReader<'a> {
         let target = match self.xls.by_name(zip_target) {
             Ok(ws) => ws,
@@ -431,7 +433,6 @@ impl Workbook {
         let mut reader = Reader::from_reader(reader);
         reader.trim_text(true);
         SheetReader { reader, strings: &self.strings }
-        // SheetReader { reader, get_string: &self.get_string }
     }
 
 }
