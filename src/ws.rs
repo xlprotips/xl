@@ -67,6 +67,27 @@ pub struct Cell<'a> {
     pub cell_type: String,
 }
 
+impl Cell<'_> {
+    /// return the row/column coordinates of the current cell
+    pub fn coordinates(&self) -> (u16, u32) {
+        // let (col, row) = split_cell_reference(&self.reference);
+        let (col, row) = {
+            let r = &self.reference;
+            let mut end = 0;
+            for (i, c) in r.chars().enumerate() {
+                if !c.is_ascii_alphabetic() {
+                    end = i;
+                    break
+                }
+            }
+            (&r[..end], &r[end..])
+        };
+        let col = crate::col2num(col).unwrap();
+        let row = row.parse().unwrap();
+        (col, row)
+    }
+}
+
 #[derive(Debug)]
 pub struct Row<'a>(pub Vec<Cell<'a>>, pub usize);
 
@@ -142,7 +163,7 @@ impl<'a> Iterator for RowIter<'a> {
         let reader = &mut self.worksheet_reader.reader;
         let strings = self.worksheet_reader.strings;
         let next_row = {
-            let mut row = Vec::new();
+            let mut row: Vec<Cell> = Vec::new();
             let mut in_cell = false;
             let mut in_value = false;
             let mut c = new_cell();
@@ -191,7 +212,20 @@ impl<'a> Iterator for RowIter<'a> {
                         in_value = false;
                     },
                     Ok(Event::End(ref e)) if e.name() == b"c" => {
-                        row.push(c);
+                        if let Some(prev) = row.last() {
+                            let (mut last_col, _) = prev.coordinates();
+                            let (this_col, this_row) = c.coordinates();
+                            while this_col > last_col + 1 {
+                                let mut cell = new_cell();
+                                cell.reference.push_str(&crate::num2col(last_col + 1).unwrap());
+                                cell.reference.push_str(&this_row.to_string());
+                                row.push(cell);
+                                last_col += 1;
+                            }
+                            row.push(c);
+                        } else {
+                            row.push(c);
+                        }
                         c = new_cell();
                         in_cell = false;
                     },
