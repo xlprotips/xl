@@ -91,8 +91,20 @@ impl Worksheet {
 
     pub fn rows<'a>(&self, workbook: &'a mut Workbook) -> RowIter<'a> {
         let reader = workbook.sheet_reader(&self.target);
-        RowIter { worksheet_reader: reader, want_row: 1, next_row: None }
+        RowIter {
+            worksheet_reader: reader,
+            want_row: 1,
+            next_row: None,
+            num_cols: self.ncols(),
+            num_rows: self.nrows(),
+        }
     }
+
+    /// how many columns are used in this worksheet
+    pub fn ncols(&self) -> u16 { self.dimensions.num_columns }
+
+    /// how many rows are used in this worksheet
+    pub fn nrows(&self) -> u32 { self.dimensions.num_rows }
 }
 
 #[derive(Debug)]
@@ -183,6 +195,8 @@ pub struct RowIter<'a> {
     worksheet_reader: SheetReader<'a>,
     want_row: usize,
     next_row: Option<Row<'a>>,
+    num_rows: u32,
+    num_cols: u16,
 }
 
 fn new_cell() -> Cell<'static> {
@@ -225,7 +239,8 @@ impl<'a> Iterator for RowIter<'a> {
         let reader = &mut self.worksheet_reader.reader;
         let strings = self.worksheet_reader.strings;
         let next_row = {
-            let mut row: Vec<Cell> = Vec::new();
+            println!("TODO: USE num_rows: {}", self.num_rows);
+            let mut row: Vec<Cell> = Vec::with_capacity(self.num_cols as usize);
             let mut in_cell = false;
             let mut in_value = false;
             let mut c = new_cell();
@@ -286,6 +301,13 @@ impl<'a> Iterator for RowIter<'a> {
                             }
                             row.push(c);
                         } else {
+                            let (this_col, this_row) = c.coordinates();
+                            for n in 1..this_col {
+                                let mut cell = new_cell();
+                                cell.reference.push_str(&crate::num2col(n).unwrap());
+                                cell.reference.push_str(&this_row.to_string());
+                                row.push(cell);
+                            }
                             row.push(c);
                         }
                         c = new_cell();
