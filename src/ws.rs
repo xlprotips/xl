@@ -14,6 +14,7 @@ pub struct WorksheetDimensions {
     num_columns: u16,
 }
 
+// TODO: figure out a way to leverage the open workbook rather than opening again
 /// find the number of rows and columns used in a particular worksheet. takes the workbook xlsx
 /// location as its first parameter, and the location of the worksheet in question (within the zip)
 /// as the second parameter. Returns a tuple of (rows, columns) in the worksheet.
@@ -111,9 +112,9 @@ impl Worksheet {
 
 #[derive(Debug)]
 pub enum ExcelValue<'a> {
-    Bool(String),
+    Bool(bool),
     Date(String),
-    Err,
+    Err(String),
     None,
     Number(f64),
     String(&'a str),
@@ -124,8 +125,8 @@ impl fmt::Display for ExcelValue<'_> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             ExcelValue::Bool(b) => write!(f, "{}", b),
-            ExcelValue::Date(d) => write!(f, "'{}'", d),
-            ExcelValue::Err => write!(f, "#NA"),
+            ExcelValue::Date(d) => write!(f, "{}'d", d),
+            ExcelValue::Err(e) => write!(f, "#{}", e),
             ExcelValue::None => write!(f, "<None>"),
             ExcelValue::Number(n) => write!(f, "{}", n),
             ExcelValue::Other(s) => write!(f, "\"{}\"", s),
@@ -141,6 +142,7 @@ pub struct Cell<'a> {
     pub reference: String,
     pub style: String,
     pub cell_type: String,
+    pub raw_value: String,
 }
 
 impl Cell<'_> {
@@ -209,6 +211,7 @@ fn new_cell() -> Cell<'static> {
         reference: "".to_string(),
         style: "".to_string(),
         cell_type: "".to_string(),
+        raw_value: "".to_string(),
     }
 }
 
@@ -255,6 +258,7 @@ impl<'a> Iterator for RowIter<'a> {
         let mut buf = Vec::new();
         let reader = &mut self.worksheet_reader.reader;
         let strings = self.worksheet_reader.strings;
+        let styles = self.worksheet_reader.styles;
         let next_row = {
             let mut row: Vec<Cell> = Vec::with_capacity(self.num_cols as usize);
             let mut in_cell = false;
@@ -278,7 +282,11 @@ impl<'a> Iterator for RowIter<'a> {
                                     c.cell_type = utils::attr_value(&a);
                                 }
                                 if a.key == b"s" {
-                                    c.style = utils::attr_value(&a);
+                                    if let Ok(num) = utils::attr_value(&a).parse::<usize>() {
+                                        if let Some(style) = styles.get(num) {
+                                            c.style = style.to_string();
+                                        }
+                                    }
                                 }
                             });
                     },
@@ -288,14 +296,25 @@ impl<'a> Iterator for RowIter<'a> {
                     // note: because v elements are children of c elements,
                     // need this check to go before the 'in_cell' check
                     Ok(Event::Text(ref e)) if in_value => {
-                        let txt = e.unescape_and_decode(&reader).unwrap();
-                        if c.cell_type == "s" {
-                            let pos: usize = txt.parse().unwrap();
-                            let s = &strings[pos]; // .to_string()
-                            c.value = ExcelValue::String(s)
-                        } else {
-                            c.value = ExcelValue::Other(txt)
-                        }
+                        c.raw_value = e.unescape_and_decode(&reader).unwrap();
+                        c.value = match &c.cell_type[..] {
+                            "s" | "str" => {
+                                let pos: usize = c.raw_value.parse().unwrap();
+                                let s = &strings[pos]; // .to_string()
+                                ExcelValue::String(s)
+                            },
+                            "b" => {
+                                if c.raw_value == "0" {
+                                    ExcelValue::Bool(false)
+                                } else {
+                                    ExcelValue::Bool(true)
+                                }
+                            },
+                            "bl" => ExcelValue::None,
+                            "e" => ExcelValue::Err(c.raw_value.to_string()),
+                            _ if is_date(&c) => ExcelValue::Date(c.raw_value.to_string()),
+                            _ => ExcelValue::Number(c.raw_value.parse::<f64>().unwrap()),
+                        };
                     },
                     Ok(Event::Text(ref e)) if in_cell => {
                         let txt = e.unescape_and_decode(&reader).unwrap();
@@ -358,5 +377,19 @@ impl<'a> Iterator for RowIter<'a> {
             return empty_row(self.num_cols, self.want_row - 1);
         }
         next_row
+    }
+}
+
+fn is_date(cell: &Cell) -> bool {
+    if cell.style == "d" {
+        true
+    } else if cell.style.contains("d") && !cell.style.contains("Red") {
+        true
+    } else if cell.style.contains("m") {
+        true
+    } else if cell.style.contains("y") {
+        true
+    } else {
+        false
     }
 }
