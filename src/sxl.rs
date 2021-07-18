@@ -252,6 +252,7 @@ pub struct SheetReader<'a> {
     reader: Reader<BufReader<ZipFile<'a>>>,
     strings: &'a Vec<String>,
     styles: &'a Vec<String>,
+    date_system: &'a DateSystem,
 }
 
 impl Workbook {
@@ -388,11 +389,12 @@ impl Workbook {
         if let Ok(mut xls) = zip::ZipArchive::new(zip_file) {
             let strings = strings(&mut xls);
             let styles = find_styles(&mut xls);
+            let date_system = get_date_system(&mut xls);
             Some(Workbook {
                 path: path.to_string(),
                 xls,
                 encoding: String::from("utf8"),
-                date_system: DateSystem::V1900,
+                date_system,
                 strings,
                 styles,
             })
@@ -434,7 +436,7 @@ impl Workbook {
         let reader = BufReader::new(target);
         let mut reader = Reader::from_reader(reader);
         reader.trim_text(true);
-        SheetReader { reader, strings: &self.strings, styles: &self.styles }
+        SheetReader { reader, strings: &self.strings, styles: &self.styles, date_system: &self.date_system }
     }
 
 }
@@ -539,4 +541,32 @@ fn standard_styles() -> HashMap<String, String> {
         styles.insert(id.to_string(), code.to_string());
     }
     styles
+}
+
+fn get_date_system(xlsx: &mut ZipArchive<fs::File>) -> DateSystem {
+    match xlsx.by_name("xl/workbook.xml") {
+        Ok(wb) => {
+            let reader = BufReader::new(wb);
+            let mut reader = Reader::from_reader(reader);
+            reader.trim_text(true);
+            let mut buf = Vec::new();
+            loop {
+                match reader.read_event(&mut buf) {
+                    Ok(Event::Empty(ref e)) if e.name() == b"workbookPr" => {
+                        if let Some(system) = utils::get(e.attributes(), b"date1904") {
+                            if system == "1" {
+                                break DateSystem::V1904
+                            }
+                        }
+                        break DateSystem::V1900
+                    },
+                    Ok(Event::Eof) => break DateSystem::V1900,
+                    Err(e) => panic!("Error at position {}: {:?}", reader.buffer_position(), e),
+                    _ => (),
+                }
+                buf.clear();
+            }
+        },
+        Err(_) => panic!("Could not find xl/workbook.xml")
+    }
 }

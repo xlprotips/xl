@@ -28,7 +28,7 @@ pub enum DateConversion {
 ///  The date system is either the 1904 system or the 1900 system depending on which date system
 ///  the spreadsheet is using. See http://bit.ly/2He5HoD for more information on date systems in
 ///  Excel.
-pub fn excel_number_to_date(number: f64, date_system: DateSystem) -> DateConversion {
+pub fn excel_number_to_date(number: f64, date_system: &DateSystem) -> DateConversion {
     let base = match date_system {
         DateSystem::V1900 => {
             // Under the 1900 base system, 1 represents 1/1/1900 (so we start with a base date of

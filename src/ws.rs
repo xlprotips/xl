@@ -264,6 +264,7 @@ impl<'a> Iterator for RowIter<'a> {
         let reader = &mut self.worksheet_reader.reader;
         let strings = self.worksheet_reader.strings;
         let styles = self.worksheet_reader.styles;
+        let date_system = self.worksheet_reader.date_system;
         let next_row = {
             let mut row: Vec<Cell> = Vec::with_capacity(self.num_cols as usize);
             let mut in_cell = false;
@@ -319,7 +320,7 @@ impl<'a> Iterator for RowIter<'a> {
                             "e" => ExcelValue::Err(c.raw_value.to_string()),
                             _ if is_date(&c) => {
                                 let num = c.raw_value.parse::<f64>().unwrap();
-                                match utils::excel_number_to_date(num, crate::DateSystem::V1900) {
+                                match utils::excel_number_to_date(num, date_system) {
                                     utils::DateConversion::Date(date) => ExcelValue::Date(date),
                                     utils::DateConversion::DateTime(date) => ExcelValue::DateTime(date),
                                     utils::DateConversion::Time(time) => ExcelValue::Time(time),
