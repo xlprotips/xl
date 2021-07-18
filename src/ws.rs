@@ -4,6 +4,7 @@ use crate::utils;
 use std::cmp;
 use std::fmt;
 use std::mem;
+use chrono::{NaiveDateTime, NaiveTime};
 use quick_xml::events::Event;
 // use quick_xml::events::attributes::Attribute;
 use crate::{SheetReader, Workbook};
@@ -113,11 +114,12 @@ impl Worksheet {
 #[derive(Debug)]
 pub enum ExcelValue<'a> {
     Bool(bool),
-    Date(String),
+    Date(NaiveDateTime),
     Err(String),
     None,
     Number(f64),
     String(&'a str),
+    Time(NaiveTime),
     Other(String),
 }
 
@@ -125,12 +127,13 @@ impl fmt::Display for ExcelValue<'_> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             ExcelValue::Bool(b) => write!(f, "{}", b),
-            ExcelValue::Date(d) => write!(f, "{}'d", d),
+            ExcelValue::Date(d) => write!(f, "{}", d),
             ExcelValue::Err(e) => write!(f, "#{}", e),
             ExcelValue::None => write!(f, "<None>"),
             ExcelValue::Number(n) => write!(f, "{}", n),
             ExcelValue::Other(s) => write!(f, "\"{}\"", s),
             ExcelValue::String(s) => write!(f, "\"{}\"", s),
+            ExcelValue::Time(t) => write!(f, "\"{}\"", t),
         }
     }
 }
@@ -312,7 +315,15 @@ impl<'a> Iterator for RowIter<'a> {
                             },
                             "bl" => ExcelValue::None,
                             "e" => ExcelValue::Err(c.raw_value.to_string()),
-                            _ if is_date(&c) => ExcelValue::Date(c.raw_value.to_string()),
+                            _ if is_date(&c) => {
+                                let num = c.raw_value.parse::<f64>().unwrap();
+                                match utils::excel_number_to_date(num, crate::DateSystem::V1900) {
+                                    utils::DateConversion::DateTime(date) => ExcelValue::Date(date),
+                                    utils::DateConversion::Time(time) => ExcelValue::Time(time),
+                                    utils::DateConversion::Number(num) => ExcelValue::Number(num as f64),
+                                }
+                                
+                            },
                             _ => ExcelValue::Number(c.raw_value.parse::<f64>().unwrap()),
                         };
                     },
