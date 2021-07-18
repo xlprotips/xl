@@ -284,25 +284,20 @@ impl Workbook {
                 let mut buf = Vec::new();
                 loop {
                     match reader.read_event(&mut buf) {
-                        Ok(Event::Empty(ref e)) => {
-                            match e.name() {
-                                b"Relationship" => {
-                                    let mut id = String::new();
-                                    let mut target = String::new();
-                                    e.attributes()
-                                        .for_each(|a| {
-                                            let a = a.unwrap();
-                                            if a.key == b"Id" {
-                                                id = utils::attr_value(&a);
-                                            }
-                                            if a.key == b"Target" {
-                                                target = utils::attr_value(&a);
-                                            }
-                                        });
-                                    map.insert(id, target);
-                                },
-                                _ => (),
-                            }
+                        Ok(Event::Empty(ref e)) if e.name() == b"Relationship" => {
+                            let mut id = String::new();
+                            let mut target = String::new();
+                            e.attributes()
+                                .for_each(|a| {
+                                    let a = a.unwrap();
+                                    if a.key == b"Id" {
+                                        id = utils::attr_value(&a);
+                                    }
+                                    if a.key == b"Target" {
+                                        target = utils::attr_value(&a);
+                                    }
+                                });
+                            map.insert(id, target);
                         },
                         Ok(Event::Eof) => break, // exits the loop when reaching end of file
                         Err(e) => panic!("Error at position {}: {:?}", reader.buffer_position(), e),
