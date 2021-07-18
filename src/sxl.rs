@@ -324,7 +324,6 @@ impl Workbook {
         match self.xls.by_name("xl/workbook.xml") {
             Ok(wb) => {
                 // let _ = std::io::copy(&mut wb, &mut std::io::stdout());
-
                 let reader = BufReader::new(wb);
                 let mut reader = Reader::from_reader(reader);
                 reader.trim_text(true);
@@ -363,10 +362,11 @@ impl Workbook {
                             while num as usize >= sheets.sheets_by_num.len() {
                                 sheets.sheets_by_num.push(None);
                             }
-                            let dims = ws::find_used_area(&self.path, &target);
-                            sheets.sheets_by_num[num as usize] = Some(Worksheet::new(id, name, num, target, dims));
+                            sheets.sheets_by_num[num as usize] = Some(Worksheet::new(id, name, num, target));
                         },
-                        Ok(Event::Eof) => break,
+                        Ok(Event::Eof) => {
+                            break
+                        },
                         Err(e) => panic!("Error at position {}: {:?}", reader.buffer_position(), e),
                         _ => (),
                     }
