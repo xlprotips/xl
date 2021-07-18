@@ -17,6 +17,7 @@ pub fn get(attrs: Attributes, which: &[u8]) -> Option<String> {
 }
 
 pub enum DateConversion {
+    Date(NaiveDate),
     DateTime(NaiveDateTime),
     Time(NaiveTime),
     Number(i64),
@@ -63,6 +64,10 @@ pub fn excel_number_to_date(number: f64, date_system: DateSystem) -> DateConvers
     if days == 0 {
         DateConversion::Time(date.time())
     } else {
-        DateConversion::DateTime(date)
+        if date.time() == NaiveTime::from_hms(0, 0, 0) {
+            DateConversion::Date(date.date())
+        } else {
+            DateConversion::DateTime(date)
+        }
     }
 }

@@ -4,7 +4,7 @@ use crate::utils;
 use std::cmp;
 use std::fmt;
 use std::mem;
-use chrono::{NaiveDateTime, NaiveTime};
+use chrono::{NaiveDate, NaiveDateTime, NaiveTime};
 use quick_xml::events::Event;
 // use quick_xml::events::attributes::Attribute;
 use crate::{SheetReader, Workbook};
@@ -114,7 +114,8 @@ impl Worksheet {
 #[derive(Debug)]
 pub enum ExcelValue<'a> {
     Bool(bool),
-    Date(NaiveDateTime),
+    Date(NaiveDate),
+    DateTime(NaiveDateTime),
     Err(String),
     None,
     Number(f64),
@@ -128,6 +129,7 @@ impl fmt::Display for ExcelValue<'_> {
         match self {
             ExcelValue::Bool(b) => write!(f, "{}", b),
             ExcelValue::Date(d) => write!(f, "{}", d),
+            ExcelValue::DateTime(d) => write!(f, "{}", d),
             ExcelValue::Err(e) => write!(f, "#{}", e),
             ExcelValue::None => write!(f, "<None>"),
             ExcelValue::Number(n) => write!(f, "{}", n),
@@ -318,7 +320,8 @@ impl<'a> Iterator for RowIter<'a> {
                             _ if is_date(&c) => {
                                 let num = c.raw_value.parse::<f64>().unwrap();
                                 match utils::excel_number_to_date(num, crate::DateSystem::V1900) {
-                                    utils::DateConversion::DateTime(date) => ExcelValue::Date(date),
+                                    utils::DateConversion::Date(date) => ExcelValue::Date(date),
+                                    utils::DateConversion::DateTime(date) => ExcelValue::DateTime(date),
                                     utils::DateConversion::Time(time) => ExcelValue::Time(time),
                                     utils::DateConversion::Number(num) => ExcelValue::Number(num as f64),
                                 }
