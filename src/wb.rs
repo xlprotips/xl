@@ -10,187 +10,23 @@
 //!
 //! Here is a sample of how you might use this library:
 //!
-//!     use sxl::Workbook;
+//!     use xl::Workbook;
 //!
 //!     fn main () {
-//!         let mut wb = sxl::Workbook::open("tests/data/Book1.xlsx").unwrap();
+//!         let mut wb = xl::Workbook::open("tests/data/Book1.xlsx").unwrap();
 //!         let sheets = wb.sheets();
 //!         let sheet = sheets.get("Sheet1");
 //!     }
 
-mod ws;
-mod utils;
-
 use std::collections::HashMap;
-use std::convert::TryInto;
 use std::fs;
 use std::fs::File;
 use std::io::BufReader;
 use quick_xml::Reader;
 use quick_xml::events::Event;
 use zip::ZipArchive;
-use zip::read::ZipFile;
-pub use ws::Worksheet;
-
-
-const XL_MAX_COL: u16 = 16384;
-const XL_MIN_COL: u16 = 1;
-
-
-#[cfg(test)]
-mod tests {
-    mod utility_functions {
-        use super::super::*;
-        #[test]
-        fn num_to_letter_w() {
-            assert_eq!(num2col(23), Some(String::from("W")));
-        }
-
-        #[test]
-        fn num_to_letter_aa() {
-            assert_eq!(num2col(27), Some(String::from("AA")));
-        }
-
-        #[test]
-        fn num_to_letter_ab() {
-            assert_eq!(num2col(28), Some(String::from("AB")));
-        }
-
-        #[test]
-        fn num_to_letter_xfd() {
-            assert_eq!(num2col(16384), Some(String::from("XFD")));
-        }
-
-        #[test]
-        fn num_to_letter_xfe() {
-            assert_eq!(num2col(16385), None);
-        }
-
-        #[test]
-        fn num_to_letter_0() {
-            assert_eq!(num2col(0), None);
-        }
-
-        #[test]
-        fn letter_to_num_w() {
-            assert_eq!(col2num("W"), Some(23));
-        }
-
-        #[test]
-        fn letter_to_num_aa() {
-            assert_eq!(col2num("AA"), Some(27));
-        }
-
-        #[test]
-        fn letter_to_num_ab() {
-            assert_eq!(col2num("AB"), Some(28));
-        }
-
-        #[test]
-        fn letter_to_num_xfd() {
-            assert_eq!(col2num("XFD"), Some(16384));
-        }
-
-        #[test]
-        fn letter_to_num_xfe() {
-            assert_eq!(col2num("XFE"), None);
-        }
-
-        #[test]
-        fn letter_to_num_ab_lower() {
-            assert_eq!(col2num("ab"), Some(28));
-        }
-
-        #[test]
-        fn letter_to_num_number() {
-            assert_eq!(col2num("12"), None);
-        }
-
-        #[test]
-        fn letter_to_num_semicolon() {
-            assert_eq!(col2num(";"), None);
-        }
-    }
-
-    mod access {
-        use super::super::*;
-
-        #[test]
-        fn open_wb() {
-            let wb = Workbook::open("tests/data/Book1.xlsx");
-            assert!(wb.is_ok());
-        }
-
-        #[test]
-        fn all_sheets() {
-            let mut wb = Workbook::open("tests/data/Book1.xlsx").unwrap();
-            let num_sheets = wb.sheets().len();
-            assert_eq!(num_sheets, 4);
-        }
-
-        #[test]
-        fn sheet_by_name_exists() {
-            let mut wb = Workbook::open("tests/data/Book1.xlsx").unwrap();
-            let sheets = wb.sheets();
-            assert!(sheets.get("Time").is_some());
-        }
-
-        #[test]
-        fn sheet_by_num_exists() {
-            let mut wb = Workbook::open("tests/data/Book1.xlsx").unwrap();
-            let sheets = wb.sheets();
-            assert!(sheets.get(1).is_some());
-        }
-
-        #[test]
-        fn sheet_by_name_not_exists() {
-            let mut wb = Workbook::open("tests/data/Book1.xlsx").unwrap();
-            let sheets = wb.sheets();
-            assert!(!sheets.get("Unknown").is_some());
-        }
-
-        #[test]
-        fn sheet_by_num_not_exists() {
-            let mut wb = Workbook::open("tests/data/Book1.xlsx").unwrap();
-            let sheets = wb.sheets();
-            assert!(!sheets.get(0).is_some());
-        }
-
-        #[test]
-        fn correct_sheet_name() {
-            let mut wb = Workbook::open("tests/data/Book1.xlsx").unwrap();
-            let sheets = wb.sheets();
-            assert_eq!(sheets.get("Time").unwrap().name, "Time");
-        }
-    }
-}
-
-
-/// Return column letter for column number `n`
-pub fn num2col(n: u16) -> Option<String> {
-    if n > XL_MAX_COL || n < XL_MIN_COL { return None }
-    let mut s = String::new();
-    let mut n = n;
-    while n > 0 {
-        let r: u8 = ((n - 1) % 26).try_into().unwrap();
-        n = (n - 1) / 26;
-        s.push((65 + r) as char)
-    }
-    Some(s.chars().rev().collect::<String>())
-}
-
-
-/// Return column number for column letter `letter`
-pub fn col2num(letter: &str) -> Option<u16> {
-    let letter = letter.to_uppercase();
-    let mut num: u16 = 0;
-    for c in letter.chars() {
-        if c < 'A' || c > 'Z' { return None }
-        num = num * 26 + ((c as u16) - ('A' as u16)) + 1;
-    }
-    if num > XL_MAX_COL || num < XL_MIN_COL { return None }
-    Some(num)
-}
+use crate::ws::{SheetReader, Worksheet};
+use crate::utils;
 
 #[derive(Debug)]
 pub enum DateSystem {
@@ -246,13 +82,6 @@ impl SheetMap {
     pub fn len(&self) -> u8 {
         (self.sheets_by_num.len() - 1) as u8
     }
-}
-
-pub struct SheetReader<'a> {
-    reader: Reader<BufReader<ZipFile<'a>>>,
-    strings: &'a Vec<String>,
-    styles: &'a Vec<String>,
-    date_system: &'a DateSystem,
 }
 
 impl Workbook {
@@ -438,7 +267,7 @@ impl Workbook {
         let reader = BufReader::new(target);
         let mut reader = Reader::from_reader(reader);
         reader.trim_text(true);
-        SheetReader { reader, strings: &self.strings, styles: &self.styles, date_system: &self.date_system }
+        SheetReader::new(reader, &self.strings, &self.styles, &self.date_system)
     }
 
 }
@@ -570,5 +399,61 @@ fn get_date_system(xlsx: &mut ZipArchive<fs::File>) -> DateSystem {
             }
         },
         Err(_) => panic!("Could not find xl/workbook.xml")
+    }
+}
+
+
+#[cfg(test)]
+mod tests {
+    mod access {
+        use super::super::*;
+
+        #[test]
+        fn open_wb() {
+            let wb = Workbook::open("tests/data/Book1.xlsx");
+            assert!(wb.is_ok());
+        }
+
+        #[test]
+        fn all_sheets() {
+            let mut wb = Workbook::open("tests/data/Book1.xlsx").unwrap();
+            let num_sheets = wb.sheets().len();
+            assert_eq!(num_sheets, 4);
+        }
+
+        #[test]
+        fn sheet_by_name_exists() {
+            let mut wb = Workbook::open("tests/data/Book1.xlsx").unwrap();
+            let sheets = wb.sheets();
+            assert!(sheets.get("Time").is_some());
+        }
+
+        #[test]
+        fn sheet_by_num_exists() {
+            let mut wb = Workbook::open("tests/data/Book1.xlsx").unwrap();
+            let sheets = wb.sheets();
+            assert!(sheets.get(1).is_some());
+        }
+
+        #[test]
+        fn sheet_by_name_not_exists() {
+            let mut wb = Workbook::open("tests/data/Book1.xlsx").unwrap();
+            let sheets = wb.sheets();
+            assert!(!sheets.get("Unknown").is_some());
+        }
+
+        #[test]
+        fn sheet_by_num_not_exists() {
+            let mut wb = Workbook::open("tests/data/Book1.xlsx").unwrap();
+            let sheets = wb.sheets();
+            assert!(!sheets.get(0).is_some());
+        }
+
+        #[test]
+        fn correct_sheet_name() {
+            let mut wb = Workbook::open("tests/data/Book1.xlsx").unwrap();
+            let sheets = wb.sheets();
+            assert_eq!(sheets.get("Time").unwrap().name, "Time");
+        }
     }
 }

@@ -55,7 +55,7 @@ impl Config {
 }
 
 fn run(config: Config) -> Result<(), String> {
-    match sxl::Workbook::new(&config.workbook_path) {
+    match xl::Workbook::new(&config.workbook_path) {
         Ok(mut wb) => {
             let sheets = wb.sheets();
             if let Some(ws) = sheets.get(&*config.tab) {

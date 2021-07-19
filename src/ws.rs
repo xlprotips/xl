@@ -3,11 +3,31 @@ use crate::utils;
 
 use std::cmp;
 use std::fmt;
+use std::io::BufReader;
 use std::mem;
 use chrono::{NaiveDate, NaiveDateTime, NaiveTime};
+use zip::read::ZipFile;
+use quick_xml::Reader;
 use quick_xml::events::Event;
 // use quick_xml::events::attributes::Attribute;
-use crate::{SheetReader, Workbook};
+use crate::wb::{DateSystem, Workbook};
+
+pub struct SheetReader<'a> {
+    reader: Reader<BufReader<ZipFile<'a>>>,
+    strings: &'a Vec<String>,
+    styles: &'a Vec<String>,
+    date_system: &'a DateSystem,
+}
+
+impl<'a> SheetReader<'a> {
+    pub fn new(
+        reader: Reader<BufReader<ZipFile<'a>>>,
+        strings: &'a Vec<String>,
+        styles: &'a Vec<String>,
+        date_system: &'a DateSystem) -> SheetReader<'a> {
+        SheetReader { reader, strings, styles, date_system }
+    }
+}
 
 /// find the number of rows and columns used in a particular worksheet. takes the workbook xlsx
 /// location as its first parameter, and the location of the worksheet in question (within the zip)
@@ -30,7 +50,7 @@ pub fn used_area(used_area_range: &str) -> (u32, u16) {
                 break
             }
         }
-        let col = crate::col2num(&end_range[1..end]).unwrap();
+        let col = utils::col2num(&end_range[1..end]).unwrap();
         let row: u32 = end_range[end..].parse().unwrap();
         (row, col)
     }
@@ -124,7 +144,7 @@ impl Cell<'_> {
             }
             (&r[..end], &r[end..])
         };
-        let col = crate::col2num(col).unwrap();
+        let col = utils::col2num(col).unwrap();
         let row = row.parse().unwrap();
         (col, row)
     }
@@ -182,7 +202,7 @@ fn empty_row(num_cols: u16, this_row: usize) -> Option<Row<'static>> {
     let mut row = vec![];
     for n in 0..num_cols {
         let mut c = new_cell();
-        c.reference.push_str(&crate::num2col(n + 1).unwrap());
+        c.reference.push_str(&utils::num2col(n + 1).unwrap());
         c.reference.push_str(&this_row.to_string());
         row.push(c);
     }
@@ -313,7 +333,7 @@ impl<'a> Iterator for RowIter<'a> {
                             let (this_col, this_row) = c.coordinates();
                             while this_col > last_col + 1 {
                                 let mut cell = new_cell();
-                                cell.reference.push_str(&crate::num2col(last_col + 1).unwrap());
+                                cell.reference.push_str(&utils::num2col(last_col + 1).unwrap());
                                 cell.reference.push_str(&this_row.to_string());
                                 row.push(cell);
                                 last_col += 1;
@@ -323,7 +343,7 @@ impl<'a> Iterator for RowIter<'a> {
                             let (this_col, this_row) = c.coordinates();
                             for n in 1..this_col {
                                 let mut cell = new_cell();
-                                cell.reference.push_str(&crate::num2col(n).unwrap());
+                                cell.reference.push_str(&utils::num2col(n).unwrap());
                                 cell.reference.push_str(&this_row.to_string());
                                 row.push(cell);
                             }
@@ -336,7 +356,7 @@ impl<'a> Iterator for RowIter<'a> {
                         self.num_cols = cmp::max(self.num_cols, row.len() as u16);
                         while row.len() < self.num_cols as usize {
                             let mut cell = new_cell();
-                            cell.reference.push_str(&crate::num2col(row.len() as u16 + 1).unwrap());
+                            cell.reference.push_str(&utils::num2col(row.len() as u16 + 1).unwrap());
                             cell.reference.push_str(&this_row.to_string());
                             row.push(cell);
                         }
