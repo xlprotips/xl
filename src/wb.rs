@@ -296,7 +296,6 @@ fn strings(zip_file: &mut ZipArchive<File>) -> Vec<String> {
     }
 }
 
-
 /// find the number of rows and columns used in a particular worksheet. takes the workbook xlsx
 /// location as its first parameter, and the location of the worksheet in question (within the zip)
 /// as the second parameter. Returns a tuple of (rows, columns) in the worksheet.
@@ -401,7 +400,6 @@ fn get_date_system(xlsx: &mut ZipArchive<fs::File>) -> DateSystem {
         Err(_) => panic!("Could not find xl/workbook.xml")
     }
 }
-
 
 #[cfg(test)]
 mod tests {

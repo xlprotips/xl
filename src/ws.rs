@@ -32,7 +32,7 @@ impl<'a> SheetReader<'a> {
 /// find the number of rows and columns used in a particular worksheet. takes the workbook xlsx
 /// location as its first parameter, and the location of the worksheet in question (within the zip)
 /// as the second parameter. Returns a tuple of (rows, columns) in the worksheet.
-pub fn used_area(used_area_range: &str) -> (u32, u16) {
+fn used_area(used_area_range: &str) -> (u32, u16) {
     let mut end: isize = -1;
     for (i, c) in used_area_range.chars().enumerate() {
         if c == ':' { end = i as isize; break }
@@ -100,7 +100,6 @@ pub enum ExcelValue<'a> {
     Number(f64),
     String(&'a str),
     Time(NaiveTime),
-    Other(String),
 }
 
 impl fmt::Display for ExcelValue<'_> {
@@ -112,7 +111,6 @@ impl fmt::Display for ExcelValue<'_> {
             ExcelValue::Error(e) => write!(f, "#{}", e),
             ExcelValue::None => write!(f, ""),
             ExcelValue::Number(n) => write!(f, "{}", n),
-            ExcelValue::Other(s) => write!(f, "\"{}\"", s),
             ExcelValue::String(s) => write!(f, "\"{}\"", s),
             ExcelValue::Time(t) => write!(f, "\"{}\"", t),
         }
