@@ -55,7 +55,7 @@ pub enum DateConversion {
 ///  Return date of "number" based on the date system provided.
 ///
 ///  The date system is either the 1904 system or the 1900 system depending on which date system
-///  the spreadsheet is using. See http://bit.ly/2He5HoD for more information on date systems in
+///  the spreadsheet is using. See <http://bit.ly/2He5HoD> for more information on date systems in
 ///  Excel.
 pub fn excel_number_to_date(number: f64, date_system: &DateSystem) -> DateConversion {
     let base = match date_system {

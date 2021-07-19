@@ -1,7 +1,7 @@
 //! Rust library to deal with *big* Excel files.
 //!
 //! This library is intended to help you deal with big Excel files. The library was originally
-//! created as a Python library (https://github.com/ktr/sxl) after learning that neither pandas,
+//! created as a Python library (<https://github.com/ktr/sxl>) after learning that neither pandas,
 //! openpyxl, xlwings, nor win32com had the ability to open large Excel files without loading them
 //! completely into memory. This doesn't work when you have *huge* Excel files (especially if you
 //! only want to examine a bit of the file - the first 10 rows say). `sxl` (and this library) solve
