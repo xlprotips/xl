@@ -118,7 +118,7 @@ mod tests {
         #[test]
         fn open_wb() {
             let wb = Workbook::open("tests/data/Book1.xlsx");
-            assert!(wb.is_some());
+            assert!(wb.is_ok());
         }
 
         #[test]
@@ -378,27 +378,34 @@ impl Workbook {
         }
     }
 
-    pub fn new(path: &str) -> Option<Self> {
-        if !std::path::Path::new(&path).exists() { return None }
-        let zip_file = fs::File::open(&path).unwrap();
-        if let Ok(mut xls) = zip::ZipArchive::new(zip_file) {
-            let strings = strings(&mut xls);
-            let styles = find_styles(&mut xls);
-            let date_system = get_date_system(&mut xls);
-            Some(Workbook {
-                path: path.to_string(),
-                xls,
-                encoding: String::from("utf8"),
-                date_system,
-                strings,
-                styles,
-            })
-        } else {
-            return None
+    pub fn new(path: &str) -> Result<Self, String> {
+        if !std::path::Path::new(&path).exists() {
+            let err = format!("'{}' does not exist", &path).to_owned();
+            return Err(err);
+        }
+        let zip_file = match fs::File::open(&path) {
+            Ok(z) => z,
+            Err(e) => return Err(e.to_string()),
+        };
+        match zip::ZipArchive::new(zip_file) {
+            Ok(mut xls) => {
+                let strings = strings(&mut xls);
+                let styles = find_styles(&mut xls);
+                let date_system = get_date_system(&mut xls);
+                Ok(Workbook {
+                    path: path.to_string(),
+                    xls,
+                    encoding: String::from("utf8"),
+                    date_system,
+                    strings,
+                    styles,
+                })
+            },
+            Err(e) => Err(e.to_string())
         }
     }
 
-    pub fn open(path: &str) -> Option<Self> { Workbook::new(path) }
+    pub fn open(path: &str) -> Result<Self, String> { Workbook::new(path) }
 
     pub fn contents(&mut self) {
         for i in 0 .. self.xls.len() {

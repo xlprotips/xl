@@ -75,7 +75,7 @@ pub enum ExcelValue<'a> {
     Bool(bool),
     Date(NaiveDate),
     DateTime(NaiveDateTime),
-    Err(String),
+    Error(String),
     None,
     Number(f64),
     String(&'a str),
@@ -89,7 +89,7 @@ impl fmt::Display for ExcelValue<'_> {
             ExcelValue::Bool(b) => write!(f, "{}", b),
             ExcelValue::Date(d) => write!(f, "{}", d),
             ExcelValue::DateTime(d) => write!(f, "{}", d),
-            ExcelValue::Err(e) => write!(f, "#{}", e),
+            ExcelValue::Error(e) => write!(f, "#{}", e),
             ExcelValue::None => write!(f, "<None>"),
             ExcelValue::Number(n) => write!(f, "{}", n),
             ExcelValue::Other(s) => write!(f, "\"{}\"", s),
@@ -287,7 +287,7 @@ impl<'a> Iterator for RowIter<'a> {
                                 }
                             },
                             "bl" => ExcelValue::None,
-                            "e" => ExcelValue::Err(c.raw_value.to_string()),
+                            "e" => ExcelValue::Error(c.raw_value.to_string()),
                             _ if is_date(&c) => {
                                 let num = c.raw_value.parse::<f64>().unwrap();
                                 match utils::excel_number_to_date(num, date_system) {
