@@ -25,7 +25,7 @@ struct Config {
 impl Config {
     fn new(args: &[String]) -> Result<Config, String> {
         if args.len() < 2 {
-            return Err("must provide workbook name and tab name you want to view".to_owned())
+            return Err(format!("Usage: {} <path-to-xlsx> <tab> [-n num-rows]", args[0]))
         } else if args.len() < 3 {
             return Err("must also provide which tab you want to view in workbook".to_owned())
         }
