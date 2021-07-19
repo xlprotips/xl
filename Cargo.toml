@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2018"
 license = "MIT"
 description = "A package to let you process *big* Excel files very quickly"
+repository = "https://github.com/xlprotips/xl/"
 
 [dependencies]
 zip = "0.5.13"
