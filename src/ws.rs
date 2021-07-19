@@ -90,7 +90,7 @@ impl fmt::Display for ExcelValue<'_> {
             ExcelValue::Date(d) => write!(f, "{}", d),
             ExcelValue::DateTime(d) => write!(f, "{}", d),
             ExcelValue::Error(e) => write!(f, "#{}", e),
-            ExcelValue::None => write!(f, "<None>"),
+            ExcelValue::None => write!(f, ""),
             ExcelValue::Number(n) => write!(f, "{}", n),
             ExcelValue::Other(s) => write!(f, "\"{}\"", s),
             ExcelValue::String(s) => write!(f, "\"{}\"", s),
@@ -136,12 +136,11 @@ pub struct Row<'a>(pub Vec<Cell<'a>>, pub usize);
 impl fmt::Display for Row<'_> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let vec = &self.0;
-        write!(f, "[")?;
         for (count, v) in vec.iter().enumerate() {
-            if count != 0 { write!(f, ", ")?; }
+            if count != 0 { write!(f, ",")?; }
             write!(f, "{}", v)?;
         }
-        write!(f, "]")
+        write!(f, "")
     }
 }
 
