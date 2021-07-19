@@ -1,9 +1,9 @@
 [package]
-name = "xat"
+name = "xl"
 version = "0.1.0"
 edition = "2018"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+license = "MIT"
+description = "A package to let you process *big* Excel files very quickly"
 
 [dependencies]
 zip = "0.5.13"
@@ -11,9 +11,9 @@ quick-xml = "0.22.0"
 chrono = "0.4"
 
 [lib]
-name = "sxl"
-path = "src/sxl.rs"
+name = "xl"
+path = "src/lib.rs"
 
 [[bin]]
-name = "xat"
+name = "xl"
 path = "src/main.rs"
