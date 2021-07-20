@@ -60,20 +60,15 @@ fn used_area(used_area_range: &str) -> (u32, u16) {
 pub struct Worksheet {
     pub name: String,
     pub position: u8,
-    id: String,
-    // _used_area: 
-    // pub row_length: u16,
-    // pub num_rows: u32,
-    // pub workbook: Workbook,
-    // pub name: String,
-    // pub position: u8,
+    relationship_id: String,
     /// location where we can find this worksheet in its xlsx file
     target: String,
+    sheet_id: u8,
 }
 
 impl Worksheet {
-    pub fn new(id: String, name: String, position: u8, target: String) -> Self {
-        Worksheet { name, position, id, target }
+    pub fn new(relationship_id: String, name: String, position: u8, target: String, sheet_id: u8) -> Self {
+        Worksheet { name, position, relationship_id, target, sheet_id }
     }
 
     pub fn rows<'a>(&self, workbook: &'a mut Workbook) -> RowIter<'a> {

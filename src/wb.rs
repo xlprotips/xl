@@ -46,7 +46,7 @@ pub struct Workbook {
 
 #[derive(Debug)]
 pub struct SheetMap {
-    sheets_by_name: HashMap::<String, usize>,
+    sheets_by_name: HashMap::<String, u8>,
     sheets_by_num: Vec<Option<Worksheet>>,
 }
 
