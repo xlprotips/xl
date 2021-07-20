@@ -50,6 +50,14 @@ pub struct SheetMap {
     sheets_by_num: Vec<Option<Worksheet>>,
 }
 
+impl SheetMap {
+    pub fn by_name(&self) -> Vec<String>{
+        let mut v: Vec<(&String, &usize)> = self.sheets_by_name.iter().collect();
+        v.sort_by_key(|item| item.1);
+        v.iter().map(|item| item.0.clone()).collect()
+    }
+}
+
 pub enum Sheet<'a> {
     Name(&'a str),
     Pos(usize),
