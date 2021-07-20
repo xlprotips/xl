@@ -16,5 +16,5 @@ name = "xl"
 path = "src/lib.rs"
 
 [[bin]]
-name = "xl"
+name = "xlcat"
 path = "src/main.rs"
