@@ -7,8 +7,26 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  pre-release:
+  create-release:
+    name: create-release
+    runs-on: ubuntu-latest
+    outputs:
+      upload_url: ${{ steps.release.outputs.upload_url }}
+      version: latest
+    steps:
+      - name: Create GitHub release
+        id: release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: latest
+          release_name: latest
+
+  build-pre-release:
+    name: build-pre-release
     runs-on: ${{ matrix.os }}
+    needs: ['create-release']
     strategy:
       matrix:
         build: [linux, macos, win-msvc, win32-msvc]
@@ -42,14 +60,27 @@ jobs:
         run: cargo test
       - name: Build release binary
         run: cargo build --release
+      - name: Build archive
+        shell: bash
+        run: |
+          staging="xlcat-${{ needs.create-release.outputs.version }}-${{ matrix.target }}"
+          mkdir -p "$staging"
+          cp {README.md,LICENSE.txt} "$staging/"
+          if [ "${{ matrix.os }}" = "windows-2019" ]; then
+            cp "target/release/xlcat.exe" "$staging/"
+            7z a "$staging.zip" "$staging"
+            echo "ASSET=$staging.zip" >> $GITHUB_ENV
+          else
+            cp "target/release/xlcat" "$staging/"
+            tar czf "$staging.tar.gz" "$staging"
+            echo "ASSET=$staging.tar.gz" >> $GITHUB_ENV
+          fi
       - name: Upload release archive
-        uses: marvinpinto/action-automatic-releases@latest
+        uses: actions/upload-release-asset@v1.0.1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          repo_token: ${{ secrets.GITHUB_TOKEN }}
-          automatic_release_tag: "latest"
-          prerelease: true
-          title: "Development Build"
-          files: |
-            LICENSE.txt
-            ./target/release/xlcat
-            ./target/release/xlcat.exe
+          upload_url: ${{ needs.create-release.outputs.upload_url }}
+          asset_path: ${{ env.ASSET }}
+          asset_name: ${{ env.ASSET }}
+          asset_content_type: application/octet-stream
