@@ -16,12 +16,13 @@ jobs:
     steps:
       - name: Create GitHub release
         id: release
-        uses: actions/create-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        uses: marvinpinto/action-automatic-releases@latest
         with:
-          tag_name: latest
-          release_name: latest
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          automatic_release_tag: latest
+          draft: false
+          prerelease: true
+          title: "Development Release"
 
   build-pre-release:
     name: build-pre-release
