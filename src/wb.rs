@@ -1,22 +1,5 @@
-//! Rust library to deal with *big* Excel files.
-//!
-//! This library is intended to help you deal with big Excel files. The library was originally
-//! created as a Python library (<https://github.com/ktr/sxl>) after learning that neither pandas,
-//! openpyxl, xlwings, nor win32com had the ability to open large Excel files without loading them
-//! completely into memory. This doesn't work when you have *huge* Excel files (especially if you
-//! only want to examine a bit of the file - the first 10 rows say). `sxl` (and this library) solve
-//! the problem by parsing the SpreadsheetML / XML xlsx files using a streaming parser. So you can
-//! see the first ten rows of any tab within any Excel file extremely quickly.
-//!
-//! Here is a sample of how you might use this library:
-//!
-//!     use xl::Workbook;
-//!
-//!     fn main () {
-//!         let mut wb = xl::Workbook::open("tests/data/Book1.xlsx").unwrap();
-//!         let sheets = wb.sheets();
-//!         let sheet = sheets.get("Sheet1");
-//!     }
+//! This module provides the functionality necessary to interact with an Excel workbook (i.e., the
+//! entire file).
 
 use std::collections::HashMap;
 use std::fs;
@@ -28,22 +11,50 @@ use zip::ZipArchive;
 use crate::ws::{SheetReader, Worksheet};
 use crate::utils;
 
+/// Excel spreadsheets support two different date systems:
+///
+/// - the 1900 date system
+/// - the 1904 date system
+///
+/// Under the 1900 system, the first date supported is January 1, 1900. Under the 1904 system, the
+/// first date supported is January 1, 1904. Under either system, a date is represented as the
+/// number of days that have elapsed since the first date. So you can't actually tell what date a
+/// number represents unless you also know the date system the spreadsheet uses.
+///
+/// See <https://tinyurl.com/4syjy6cw> for more information.
 #[derive(Debug)]
 pub enum DateSystem {
     V1900,
     V1904,
 }
 
+/// The Workbook is the primary object you will use in this module. The public interface allows you
+/// to see the path of the workbook as well as its date system.
+///
+/// # Example usage:
+///
+///     use xl::Workbook;
+///     let mut wb = Workbook::open("tests/data/Book1.xlsx").unwrap();
+///
 #[derive(Debug)]
 pub struct Workbook {
     pub path: String,
     xls: ZipArchive<fs::File>,
-    pub encoding: String,
+    encoding: String,
     pub date_system: DateSystem,
     strings: Vec<String>,
     styles: Vec<String>,
 }
 
+/// A `SheetMap` is an object containing all the sheets in a given workbook. The only way to obtain
+/// a `SheetMap` is from an `xl::Worksheet` object.
+///
+/// # Example usage:
+///
+///     use xl::{Workbook, Worksheet};
+///
+///     let mut wb = Workbook::open("tests/data/Book1.xlsx").unwrap();
+///     let sheets = wb.sheets();
 #[derive(Debug)]
 pub struct SheetMap {
     sheets_by_name: HashMap::<String, u8>,
@@ -51,42 +62,100 @@ pub struct SheetMap {
 }
 
 impl SheetMap {
-    pub fn by_name(&self) -> Vec<String>{
-        let mut v: Vec<(&String, &usize)> = self.sheets_by_name.iter().collect();
-        v.sort_by_key(|item| item.1);
-        v.iter().map(|item| item.0.clone()).collect()
+    /// After you obtain a `SheetMap`, `by_name` gives you a list of sheets in the `SheetMap`
+    /// ordered by their position in the workbook.
+    ///
+    /// Example usage:
+    ///
+    ///     use xl::{Workbook, Worksheet};
+    ///
+    ///     let mut wb = Workbook::open("tests/data/Book1.xlsx").unwrap();
+    ///     let sheets = wb.sheets();
+    ///     let sheet_names = sheets.by_name();
+    ///     assert_eq!(sheet_names[2], "Time");
+    ///
+    /// Note that the returned array is **ZERO** based rather than **ONE** based like `get`. The
+    /// reason for this is that we want `get` to act like VBA, but here we are only looking for a
+    /// list of names so the `Option` type seemed like overkill. (We have `get` act like VBA
+    /// because I expect people who will use this library will be very used to that "style" and may
+    /// expect the same thing in this library. If it becomes an issue, we can change it later).
+    pub fn by_name(&self) -> Vec<&str> {
+      println!("{:?}", self.sheets_by_num);
+        self.sheets_by_num
+            .iter()
+            .filter(|&s| s.is_some())
+            .map(|s| &s.as_ref().unwrap().name[..])
+            .collect()
     }
 }
 
-pub enum Sheet<'a> {
+/// Struct to let you refer to sheets by name or by position (1-based).
+pub enum SheetNameOrNum<'a> {
     Name(&'a str),
     Pos(usize),
 }
 
-pub trait SheetTrait { fn go(&self) -> Sheet; }
+/// Trait to make it easy to use `get` when trying to get a sheet. You will probably not use this
+/// struct directly.
+pub trait SheetAccessTrait { fn go(&self) -> SheetNameOrNum; }
 
-impl SheetTrait for &str {
-    fn go(&self) -> Sheet { Sheet::Name(*self) }
+impl SheetAccessTrait for &str {
+    fn go(&self) -> SheetNameOrNum { SheetNameOrNum::Name(*self) }
 }
 
-impl SheetTrait for usize {
-    fn go(&self) -> Sheet { Sheet::Pos(*self) }
+impl SheetAccessTrait for usize {
+    fn go(&self) -> SheetNameOrNum { SheetNameOrNum::Pos(*self) }
 }
 
 impl SheetMap {
-    pub fn get<T: SheetTrait>(&self, sheet: T) -> Option<&Worksheet> {
+    /// An easy way to obtain a reference to a `Worksheet` within this `Workbook`. Note that we
+    /// return an `Option` because the sheet you want may not exist in the workbook. Also note that
+    /// when you try to `get` a worksheet by number (i.e., by its position within the workbook),
+    /// the tabs use **1-based indexing** rather than 0-based indexing (like the rest of Rust and
+    /// most of the programming world). This was an intentional design choice to make things
+    /// consistent with VBA. It's possible it may change in the future, but it seems intuitive
+    /// enough if you are familiar with VBA and Excel programming, so it may not.
+    ///
+    /// # Example usage
+    ///
+    ///     use xl::{Workbook, Worksheet};
+    ///
+    ///     let mut wb = Workbook::open("tests/data/Book1.xlsx").unwrap();
+    ///     let sheets = wb.sheets();
+    ///
+    ///     // by sheet name
+    ///     let time_sheet = sheets.get("Time");
+    ///     assert!(time_sheet.is_some());
+    ///
+    ///     // unknown sheet name
+    ///     let unknown_sheet = sheets.get("not in this workbook");
+    ///     assert!(unknown_sheet.is_none());
+    ///
+    ///     // by position
+    ///     let unknown_sheet = sheets.get(1);
+    ///     assert_eq!(unknown_sheet.unwrap().name, "Sheet1");
+    pub fn get<T: SheetAccessTrait>(&self, sheet: T) -> Option<&Worksheet> {
         let sheet = sheet.go();
         match sheet {
-            Sheet::Name(n) => {
+            SheetNameOrNum::Name(n) => {
                 match self.sheets_by_name.get(n) {
-                    Some(p) => self.sheets_by_num.get(*p)?.as_ref(),
+                    Some(p) => self.sheets_by_num.get(*p as usize)?.as_ref(),
                     None => None
                 }
             },
-            Sheet::Pos(n) => self.sheets_by_num.get(n)?.as_ref(),
+            SheetNameOrNum::Pos(n) => self.sheets_by_num.get(n)?.as_ref(),
         }
     }
 
+    /// The number of active sheets in the workbook.
+    ///
+    /// # Example usage
+    ///
+    ///     use xl::{Workbook, Worksheet};
+    ///
+    ///     let mut wb = Workbook::open("tests/data/Book1.xlsx").unwrap();
+    ///     let sheets = wb.sheets();
+    ///     assert_eq!(sheets.len(), 4);
     pub fn len(&self) -> u8 {
         (self.sheets_by_num.len() - 1) as u8
     }
@@ -149,14 +218,16 @@ impl Workbook {
         }
     }
 
-    /// Return hashmap of all sheets (sheet name -> Worksheet)
+    /// Return `SheetMap` of all sheets in this workbook. See `SheetMap` class and associated
+    /// methods for more detailed documentation.
     pub fn sheets(&mut self) -> SheetMap {
         let rels = self.rels();
         let num_sheets = rels.iter().filter(|(_, v)| v.starts_with("worksheet")).count();
         let mut sheets = SheetMap {
             sheets_by_name: HashMap::new(),
-            sheets_by_num: Vec::with_capacity(num_sheets + 1), // never a "0" sheet
+            sheets_by_num: Vec::with_capacity(num_sheets + 1),
         };
+        sheets.sheets_by_num.push(None); // never a "0" sheet (consistent with VBA)
 
         match self.xls.by_name("xl/workbook.xml") {
             Ok(wb) => {
@@ -166,9 +237,11 @@ impl Workbook {
                 reader.trim_text(true);
 
                 let mut buf = Vec::new();
+                let mut current_sheet_num: u8 = 0;
                 loop {
                     match reader.read_event(&mut buf) {
                         Ok(Event::Empty(ref e)) if e.name() == b"sheet" => {
+                            current_sheet_num += 1;
                             let mut name = String::new();
                             let mut id = String::new();
                             let mut num = 0;
@@ -187,7 +260,7 @@ impl Workbook {
                                         }
                                     }
                                 });
-                            sheets.sheets_by_name.insert(name.clone(), num as usize);
+                            sheets.sheets_by_name.insert(name.clone(), current_sheet_num);
                             let target = {
                                 let s = rels.get(&id).unwrap();
                                 if s.starts_with("/") {
@@ -196,10 +269,8 @@ impl Workbook {
                                     "xl/".to_owned() + s
                                 }
                             };
-                            while num as usize >= sheets.sheets_by_num.len() {
-                                sheets.sheets_by_num.push(None);
-                            }
-                            sheets.sheets_by_num[num as usize] = Some(Worksheet::new(id, name, num, target));
+                            let ws = Worksheet::new(id, name, current_sheet_num, target, num);
+                            sheets.sheets_by_num.push(Some(ws));
                         },
                         Ok(Event::Eof) => {
                             break
@@ -215,6 +286,23 @@ impl Workbook {
         }
     }
 
+    /// Open an existing workbook (xlsx file). Returns a `Result` in case there is an error opening
+    /// the workbook.
+    ///
+    /// # Example usage:
+    ///
+    ///     use xl::Workbook;
+    ///
+    ///     let mut wb = Workbook::open("tests/data/Book1.xlsx");
+    ///     assert!(wb.is_ok());
+    ///
+    ///     // non-existant file
+    ///     let mut wb = Workbook::open("Non-existant xlsx");
+    ///     assert!(wb.is_err());
+    ///
+    ///     // non-xlsx file
+    ///     let mut wb = Workbook::open("src/main.rs");
+    ///     assert!(wb.is_err());
     pub fn new(path: &str) -> Result<Self, String> {
         if !std::path::Path::new(&path).exists() {
             let err = format!("'{}' does not exist", &path).to_owned();
@@ -242,8 +330,10 @@ impl Workbook {
         }
     }
 
+    /// Alternative name for `Workbook::new`.
     pub fn open(path: &str) -> Result<Self, String> { Workbook::new(path) }
 
+    /// Simple method to print out all the inner files of the xlsx zip.
     pub fn contents(&mut self) {
         for i in 0 .. self.xls.len() {
             let file = self.xls.by_index(i).unwrap();
@@ -265,7 +355,9 @@ impl Workbook {
         }
     }
 
-    /// returns a SheetReader for the given worksheet that can be used to iterate over rows, etc.
+    /// Create a SheetReader for the given worksheet. A `SheetReader` is a struct in the
+    /// `xl::Worksheet` class that can be used to iterate over rows, etc. See documentation in the
+    /// `xl::Worksheet` module for more information.
     pub fn sheet_reader<'a>(&'a mut self, zip_target: &str) -> SheetReader<'a> {
         let target = match self.xls.by_name(zip_target) {
             Ok(ws) => ws,

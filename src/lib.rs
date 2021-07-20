@@ -1,9 +1,32 @@
-//! This module provides the plumbing to connect the command-line interface to the xl library code.
-//! It parses arguments passed on the command line, determines if we can act on those arguments,
-//! and then provides a `Config` object back that can be passed into the `run` function if we can.
+//! This library is intended to help you deal with big Excel files. The library was originally
+//! created as a Python library (<https://github.com/ktr/sxl>) after learning that neither pandas,
+//! openpyxl, xlwings, nor win32com had the ability to open large Excel files without loading them
+//! completely into memory. This doesn't work when you have *huge* Excel files (especially if you
+//! only want to examine a bit of the file - the first 10 rows say). `sxl` (and this library) solve
+//! the problem by parsing the SpreadsheetML / XML xlsx files using a streaming parser. So you can
+//! see the first ten rows of any tab within any Excel file extremely quickly.
+//!
+//! This particular module provides the plumbing to connect the command-line interface to the xl
+//! library code. It parses arguments passed on the command line, determines if we can act on
+//! those arguments, and then provides a `Config` object back that can be passed into the `run`
+//! function if we can.
 //!
 //! In order to call `xlcat`, you need to provide a path to a valid workbook and a tab that can be
-//! found in that workbook (either by name or by number).
+//! found in that workbook (either by name or by number). You can (optionally) also pass the number
+//! of rows you want to see with the `-n` flag (e.g., `-n 10` limits the output to the first ten
+//! rows).
+//!
+//! # Example Usage
+//!
+//! Here is a sample of how you might use this library:
+//!
+//!     use xl::Workbook;
+//!
+//!     fn main () {
+//!         let mut wb = xl::Workbook::open("tests/data/Book1.xlsx").unwrap();
+//!         let sheets = wb.sheets();
+//!         let sheet = sheets.get("Sheet1");
+//!     }
 
 mod wb;
 mod ws;
