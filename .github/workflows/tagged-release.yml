@@ -1,0 +1,93 @@
+name: tagged-release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  create-release:
+    name: create-release
+    runs-on: ubuntu-latest
+    outputs:
+      upload_url: ${{ steps.release.outputs.upload_url }}
+      version: ${{ env.XL_VERSION }}
+    steps:
+      - name: Get the release version from the tag
+        shell: bash
+        if: env.XL_VERSION == ''
+        run: |
+          # See: https://tinyurl.com/35zwc9hp
+          echo "XL_VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
+          echo "version is: ${{ env.XL_VERSION }}"
+      - name: Create GitHub release
+        id: release
+        uses: marvinpinto/action-automatic-releases@latest
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          prerelease: false
+
+  build-tagged-release:
+    name: build-tagged-release
+    runs-on: ${{ matrix.os }}
+    needs: ['create-release']
+    strategy:
+      matrix:
+        build: [linux, macos, win-msvc, win32-msvc]
+        include:
+        - build: linux
+          os: ubuntu-18.04
+          rust: nightly
+          target: x86_64-unknown-linux-musl
+        - build: macos
+          os: macos-latest
+          rust: nightly
+          target: x86_64-apple-darwin
+        - build: win-msvc
+          os: windows-2019
+          rust: nightly
+          target: x86_64-pc-windows-msvc
+        - build: win32-msvc
+          os: windows-2019
+          rust: nightly
+          target: i686-pc-windows-msvc
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v2
+      - name: Install Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: ${{ matrix.rust }}
+          target: ${{ matrix.target }}
+      - name: Run Tests
+        run: cargo test
+      - name: Build release binary
+        run: cargo build --release
+      - name: Build archive
+        shell: bash
+        run: |
+          staging="xlcat-${{ needs.create-release.outputs.version }}-${{ matrix.target }}"
+          mkdir -p "$staging"
+          cp {README.md,LICENSE.txt} "$staging/"
+          if [ "${{ matrix.os }}" = "windows-2019" ]; then
+            cp "target/release/xlcat.exe" "$staging/"
+            7z a "$staging.zip" "$staging"
+            echo "ASSET=$staging.zip" >> $GITHUB_ENV
+          else
+            cp "target/release/xlcat" "$staging/"
+            tar czf "$staging.tar.gz" "$staging"
+            echo "ASSET=$staging.tar.gz" >> $GITHUB_ENV
+          fi
+      - name: Upload release archive
+        uses: actions/upload-release-asset@v1.0.1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.create-release.outputs.upload_url }}
+          asset_path: ${{ env.ASSET }}
+          asset_name: ${{ env.ASSET }}
+          asset_content_type: application/octet-stream
