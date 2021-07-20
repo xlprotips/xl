@@ -1,3 +1,9 @@
+//! This module provides the plumbing to connect the command-line interface to the xl library code.
+//! It parses arguments passed on the command line, determines if we can act on those arguments,
+//! and then provides a `Config` object back that can be passed into the `run` function if we can.
+//!
+//! In order to call `xlcat`, you need to provide a path to a valid workbook and a tab that can be
+//! found in that workbook (either by name or by number).
 
 mod wb;
 mod ws;
@@ -8,13 +14,18 @@ pub use wb::Workbook;
 pub use ws::Worksheet;
 pub use utils::{col2num, excel_number_to_date, num2col};
 
+enum SheetNameOrNum {
+    Name(String),
+    Num(usize),
+}
+
 pub struct Config {
     /// Which xlsx file should we print?
-    pub workbook_path: String,
+    workbook_path: String,
     /// Which tab should we print?
-    pub tab: String,
+    tab: SheetNameOrNum,
     /// How many rows should we print?
-    pub nrows: Option<u32>,
+    nrows: Option<u32>,
 }
 
 pub enum ConfigError<'a> {
@@ -45,7 +56,10 @@ impl Config {
             return Err(ConfigError::NeedTab)
         }
         let workbook_path = args[1].clone();
-        let tab = args[2].clone();
+        let tab = match args[2].parse::<usize>() {
+            Ok(num) => SheetNameOrNum::Num(num),
+            Err(_) => SheetNameOrNum::Name(args[2].clone())
+        };
         let mut config = Config { workbook_path, tab, nrows: None };
         let mut iter = args[3..].iter();
         while let Some(flag) = iter.next() {
@@ -73,7 +87,11 @@ pub fn run(config: Config) -> Result<(), String> {
     match crate::Workbook::new(&config.workbook_path) {
         Ok(mut wb) => {
             let sheets = wb.sheets();
-            if let Some(ws) = sheets.get(&*config.tab) {
+            let sheet = match config.tab {
+                SheetNameOrNum::Name(n) => sheets.get(&*n),
+                SheetNameOrNum::Num(n) => sheets.get(n),
+            };
+            if let Some(ws) = sheet {
                 let nrows = if let Some(nrows) = config.nrows {
                     nrows as usize
                 } else {
