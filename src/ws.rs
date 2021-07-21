@@ -1,3 +1,4 @@
+//! This module implements all the functionality specific to Excel worksheets. This mostly means 
 
 use crate::utils;
 
@@ -5,6 +6,7 @@ use std::cmp;
 use std::fmt;
 use std::io::BufReader;
 use std::mem;
+use std::ops::Index;
 use chrono::{NaiveDate, NaiveDateTime, NaiveTime};
 use zip::read::ZipFile;
 use quick_xml::Reader;
@@ -12,6 +14,11 @@ use quick_xml::events::Event;
 // use quick_xml::events::attributes::Attribute;
 use crate::wb::{DateSystem, Workbook};
 
+/// The `SheetReader` is used in a `RowIter` to navigate a worksheet. It contains a pointer to the
+/// worksheet `ZipFile` in the xlsx file, the list of strings used in the workbook, the styles used
+/// in the workbook, and the date system of the workbook. None of these fields are "public," but
+/// must be provided through the `SheetReader::new` method. See that method for documentation of
+/// each item.
 pub struct SheetReader<'a> {
     reader: Reader<BufReader<ZipFile<'a>>>,
     strings: &'a Vec<String>,
@@ -20,6 +27,21 @@ pub struct SheetReader<'a> {
 }
 
 impl<'a> SheetReader<'a> {
+    /// Create a new `SheetReader`. The parameters are:
+    ///
+    /// - The `reader` should be a reader object pointing to the sheets xml within the zip file.
+    /// - The `strings` argument should be reference to the vector of strings used in the xlsx. As
+    ///   background, xlsx files do not store strings directly in each spreadsheet's xml file.
+    ///   Instead, there is a special file that contains all the strings in the workbook that
+    ///   basically boils down to a big list of strings. Whenever a string is needed in a
+    ///   particular worksheet, the xml has the index of the string in that file. So we need this
+    ///   information to print out any string values in a worksheet.
+    /// - The `styles` are used to determine the data type (primarily for dates). While each cell
+    ///   has a 'cell type,' dates are a little trickier to get right. So we use the style
+    ///   information when we can.
+    /// - Lastly, the `date_system` is used to determine what date we are looking at for cells that
+    ///   contain date values. See the documentation for the `DateSystem` enum for more
+    ///   information.
     pub fn new(
         reader: Reader<BufReader<ZipFile<'a>>>,
         strings: &'a Vec<String>,
@@ -56,6 +78,8 @@ fn used_area(used_area_range: &str) -> (u32, u16) {
     }
 }
 
+/// The Worksheet is the primary object in this module since this is where most of the valuable
+/// data is. See the methods below for how to use.
 #[derive(Debug)]
 pub struct Worksheet {
     pub name: String,
@@ -67,10 +91,35 @@ pub struct Worksheet {
 }
 
 impl Worksheet {
+    /// Create a new worksheet. Note that this method will probably not be called directly.
+    /// Instead, you'll normally get a worksheet from a `Workbook` object. E.g.,:
+    ///
+    ///     use xl::{Workbook, Worksheet};
+    ///
+    ///     let mut wb = Workbook::open("tests/data/Book1.xlsx").unwrap();
+    ///     let sheets = wb.sheets();
+    ///     let ws = sheets.get("Time");
+    ///     assert!(ws.is_some());
     pub fn new(relationship_id: String, name: String, position: u8, target: String, sheet_id: u8) -> Self {
         Worksheet { name, position, relationship_id, target, sheet_id }
     }
 
+    /// Obtain a `RowIter` for this worksheet (that is in `workbook`). This is, arguably, the main
+    /// part of the library. You use this method to iterate through all the values in this sheet.
+    /// The simplest thing you can do is print the values out (which is what `xlcat` does), but you
+    /// could do more if you wanted.
+    ///
+    /// # Example usage
+    ///
+    ///     use xl::{Workbook, Worksheet, ExcelValue};
+    ///
+    ///     let mut wb = Workbook::open("tests/data/Book1.xlsx").unwrap();
+    ///     let sheets = wb.sheets();
+    ///     let ws = sheets.get("Sheet1").unwrap();
+    ///     let mut rows = ws.rows(&mut wb);
+    ///     let row1 = rows.next().unwrap();
+    ///     assert_eq!(row1[0].raw_value, "1");
+    ///     assert_eq!(row1[1].value, ExcelValue::Number(2f64));
     pub fn rows<'a>(&self, workbook: &'a mut Workbook) -> RowIter<'a> {
         let reader = workbook.sheet_reader(&self.target);
         RowIter {
@@ -85,7 +134,8 @@ impl Worksheet {
 
 }
 
-#[derive(Debug)]
+/// `ExcelValue` is the enum that holds the equivalent "rust value" of a `Cell`s "raw_value."
+#[derive(Debug, PartialEq)]
 pub enum ExcelValue<'a> {
     Bool(bool),
     Date(NaiveDate),
@@ -145,6 +195,14 @@ impl Cell<'_> {
 
 #[derive(Debug)]
 pub struct Row<'a>(pub Vec<Cell<'a>>, pub usize);
+
+impl<'a> Index<u16> for Row<'a> {
+    type Output = Cell<'a>;
+
+    fn index(&self, column_index: u16) -> &Self::Output {
+        &self.0[column_index as usize]
+    }
+}
 
 impl fmt::Display for Row<'_> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {

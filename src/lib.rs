@@ -34,7 +34,7 @@ mod utils;
 
 use std::fmt;
 pub use wb::Workbook;
-pub use ws::Worksheet;
+pub use ws::{Worksheet, ExcelValue};
 pub use utils::{col2num, excel_number_to_date, num2col};
 
 enum SheetNameOrNum {
