@@ -263,8 +263,8 @@ impl Workbook {
                             sheets.sheets_by_name.insert(name.clone(), current_sheet_num);
                             let target = {
                                 let s = rels.get(&id).unwrap();
-                                if s.starts_with("/") {
-                                    s[1..].to_string()
+                                if let Some(stripped) = s.strip_prefix('/') {
+                                    stripped.to_string()
                                 } else {
                                     "xl/".to_owned() + s
                                 }
@@ -305,7 +305,7 @@ impl Workbook {
     ///     assert!(wb.is_err());
     pub fn new(path: &str) -> Result<Self, String> {
         if !std::path::Path::new(&path).exists() {
-            let err = format!("'{}' does not exist", &path).to_owned();
+            let err = format!("'{}' does not exist", &path);
             return Err(err);
         }
         let zip_file = match fs::File::open(&path) {
@@ -430,7 +430,7 @@ fn find_styles(xlsx: &mut ZipArchive<fs::File>) -> Vec<String> {
         }
         buf.clear();
     }
-    return styles
+    styles
 }
 
 /// Return hashmap of standard styles (ISO/IEC 29500:2011 in Part 1, section 18.8.30)
@@ -466,8 +466,8 @@ fn standard_styles() -> HashMap<String, String> {
         ["48", "##0.0E+0",],
         ["49", "@",],
     ];
-    for i in 0 .. standard_styles.len() {
-        let [id, code] = standard_styles[i];
+    for style in standard_styles {
+        let [id, code] = style;
         styles.insert(id.to_string(), code.to_string());
     }
     styles

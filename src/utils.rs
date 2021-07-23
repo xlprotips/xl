@@ -8,7 +8,7 @@ const XL_MIN_COL: u16 = 1;
 
 /// Return column letter for column number `n`
 pub fn num2col(n: u16) -> Option<String> {
-    if n > XL_MAX_COL || n < XL_MIN_COL { return None }
+    if !(XL_MIN_COL..=XL_MAX_COL).contains(&n) { return None }
     let mut s = String::new();
     let mut n = n;
     while n > 0 {
@@ -24,10 +24,10 @@ pub fn col2num(letter: &str) -> Option<u16> {
     let letter = letter.to_uppercase();
     let mut num: u16 = 0;
     for c in letter.chars() {
-        if c < 'A' || c > 'Z' { return None }
+        if !('A'..='Z').contains(&c) { return None }
         num = num * 26 + ((c as u16) - ('A' as u16)) + 1;
     }
-    if num > XL_MAX_COL || num < XL_MIN_COL { return None }
+    if !(XL_MIN_COL..=XL_MAX_COL).contains(&num) { return None }
     Some(num)
 }
 
@@ -42,7 +42,7 @@ pub fn get(attrs: Attributes, which: &[u8]) -> Option<String> {
             return Some(attr_value(&a))
         }
     }
-    return None
+    None
 }
 
 pub enum DateConversion {
@@ -66,12 +66,12 @@ pub fn excel_number_to_date(number: f64, date_system: &DateSystem) -> DateConver
             // BUT (!), Excel considers 1900 a leap-year which it is not. As such, it will happily
             // represent 2/29/1900 with the number 60, but we cannot convert that value to a date
             // so we throw an error.
-            if number == 60.0 {
+            if (number - 60.0).abs() < 0.0001 {
                 panic!("Bad date in Excel file - 2/29/1900 not valid")
             // Otherwise, if the value is greater than 60 we need to adjust the base date to
             // 12/30/1899 to account for this leap year bug.
             } else if number > 60.0 {
-                base = base - Duration::days(1)
+                base -= Duration::days(1)
             }
             base
         },
@@ -92,12 +92,10 @@ pub fn excel_number_to_date(number: f64, date_system: &DateSystem) -> DateConver
     let date = base + Duration::days(days) + seconds + milliseconds;
     if days == 0 {
         DateConversion::Time(date.time())
+    } else if date.time() == NaiveTime::from_hms(0, 0, 0) {
+        DateConversion::Date(date.date())
     } else {
-        if date.time() == NaiveTime::from_hms(0, 0, 0) {
-            DateConversion::Date(date.date())
-        } else {
-            DateConversion::DateTime(date)
-        }
+        DateConversion::DateTime(date)
     }
 }
 

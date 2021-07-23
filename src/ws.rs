@@ -21,8 +21,8 @@ use crate::wb::{DateSystem, Workbook};
 /// each item.
 pub struct SheetReader<'a> {
     reader: Reader<BufReader<ZipFile<'a>>>,
-    strings: &'a Vec<String>,
-    styles: &'a Vec<String>,
+    strings: &'a [String],
+    styles: &'a [String],
     date_system: &'a DateSystem,
 }
 
@@ -44,8 +44,8 @@ impl<'a> SheetReader<'a> {
     ///   information.
     pub fn new(
         reader: Reader<BufReader<ZipFile<'a>>>,
-        strings: &'a Vec<String>,
-        styles: &'a Vec<String>,
+        strings: &'a [String],
+        styles: &'a [String],
         date_system: &'a DateSystem) -> SheetReader<'a> {
         SheetReader { reader, strings, styles, date_system }
     }
@@ -428,15 +428,12 @@ impl<'a> Iterator for RowIter<'a> {
 }
 
 fn is_date(cell: &Cell) -> bool {
-    if cell.style == "d" {
-        true
-    } else if cell.style.contains("d") && !cell.style.contains("Red") {
-        true
-    } else if cell.style.contains("m") {
-        true
-    } else if cell.style.contains("y") {
+    let is_d = cell.style == "d";
+    let is_like_d_and_not_like_red = cell.style.contains('d') && !cell.style.contains("Red");
+    let is_like_m = cell.style.contains('m');
+    if is_d || is_like_d_and_not_like_red || is_like_m {
         true
     } else {
-        false
+        cell.style.contains('y')
     }
 }
