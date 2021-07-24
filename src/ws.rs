@@ -337,13 +337,16 @@ impl<'a> Iterator for RowIter<'a> {
                     Ok(Event::Text(ref e)) if in_value => {
                         c.raw_value = e.unescape_and_decode(&reader).unwrap();
                         c.value = match &c.cell_type[..] {
-                            "s" | "str" => {
+                            "s" => {
                                 if let Ok(pos) = c.raw_value.parse::<usize>() {
                                     let s = &strings[pos]; // .to_string()
                                     ExcelValue::String(Cow::Borrowed(s))
                                 } else {
                                     ExcelValue::String(Cow::Owned(c.raw_value.clone()))
                                 }
+                            },
+                            "str" => {
+                                ExcelValue::String(Cow::Owned(c.raw_value.clone()))
                             },
                             "b" => {
                                 if c.raw_value == "0" {
