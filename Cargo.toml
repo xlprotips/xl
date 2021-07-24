@@ -1,6 +1,6 @@
 [package]
 name = "xl"
-version = "0.1.4"
+version = "0.1.5"
 edition = "2018"
 license = "MIT"
 description = "A package to let you process *big* Excel files very quickly"
