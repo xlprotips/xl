@@ -411,6 +411,7 @@ fn find_styles(xlsx: &mut ZipArchive<fs::File>) -> Vec<String> {
     let mut reader = Reader::from_reader(reader);
     reader.trim_text(true);
     let mut buf = Vec::new();
+    let mut record_styles = false;
     loop {
         match reader.read_event(&mut buf) {
             Ok(Event::Empty(ref e)) if e.name() == b"numFmt" => {
@@ -418,7 +419,14 @@ fn find_styles(xlsx: &mut ZipArchive<fs::File>) -> Vec<String> {
                 let code = utils::get(e.attributes(), b"formatCode").unwrap();
                 number_formats.insert(id, code);
             },
-            Ok(Event::Start(ref e)) if e.name() == b"xf" => {
+            Ok(Event::Start(ref e)) if e.name() == b"cellXfs" => {
+                // Section 2.1.589 Part 1 Section 18.3.1.4, c (Cell)
+                // Item g. states that Office specifies that @s indexes into the cellXfs collection
+                // in the style part. See https://tinyurl.com/yju9a6ox for more information.
+                record_styles = true;
+            },
+            Ok(Event::End(ref e)) if e.name() == b"cellXfs" => record_styles = false,
+            Ok(Event::Start(ref e)) | Ok(Event::Empty(ref e)) if record_styles && e.name() == b"xf" => {
                 let id = utils::get(e.attributes(), b"numFmtId").unwrap();
                 if number_formats.contains_key(&id) {
                     styles.push(number_formats.get(&id).unwrap().to_string());

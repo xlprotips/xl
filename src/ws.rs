@@ -165,11 +165,20 @@ impl fmt::Display for ExcelValue<'_> {
 
 #[derive(Debug)]
 pub struct Cell<'a> {
+    /// The value you get by converting the raw_value (a string) into a Rust value
     pub value: ExcelValue<'a>,
+    /// The formula (may be "empty") of the cell
     pub formula: String,
+    /// What cell are we looking at? E.g., B3, A1, etc.
     pub reference: String,
+    /// The cell style (e.g., the style you see in Excel by hitting Ctrl+1 and going to the
+    /// "Number" tab).
     pub style: String,
+    /// The type of cell as recorded by Excel (s = string using sharedStrings.xml, str = raw
+    /// string, b = boolean, etc.). This may change from a `String` type to an `Enum` of some sorts
+    /// in the future.
     pub cell_type: String,
+    /// The raw string value recorded in the xml
     pub raw_value: String,
 }
 
