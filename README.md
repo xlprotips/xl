@@ -23,14 +23,25 @@ xlcat <path-to-xlsx> <tab-in-xlsx>
 
 This will start spitting out the entire Excel file to your screen. If you have
 a really big file, you may want to limit how many rows you print to screen. The
-following will print the first 10 lines and then exit:
+following will print the first 10 lines of the "Book1.xlsx" file included in
+this repository:
 
 ```bash
-xlcat <path-to-xlsx> <tab-in-xlsx> -n 10
+$ xlcat tests/data/Book1.xlsx Sheet1 -n 10
+1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18
+19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36
+37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54
+55,56,57,58,59,60,61,62,63,64,65,66,67,68,69,70,71,72
+73,74,75,76,77,78,79,80,81,82,83,84,85,86,87,88,89,90
+91,92,93,94,95,2018-01-31,97,98,99,2018-02-28,101,102,103,104,105,106,107,108
+109,110,111,112,113,114,115,116,117,2018-03-01,119,120,121,122,123,124,125,126
+127,128,129,130,131,132,133,134,135,136,137,138,139,140,141,142,143,144
+145,146,147,148,149,150,151,152,153,154,155,156,157,158,159,160,161,162
+163,164,165,166,167,168,169,"Test",171,172,173,174,175,176,177,178,179,180
 ```
 
-You could obviously do this with `head` or whatever, but this makes it slightly
-easier to do without a separate tool.
+You could obviously limit the number of rows with `head` or something similar,
+but this makes it slightly easier to do without a separate tool.
 
 ## xl library
 
