@@ -5,6 +5,10 @@ fn main() {
     let args: Vec<String> = env::args().collect();
     let config = xl::Config::new(&args).unwrap_or_else(|err| {
         match err {
+            xl::ConfigError::NeedPathAndTab(_) => {
+                eprintln!("Error: {}", err);
+                xl::usage();
+            },
             xl::ConfigError::NeedTab => {
                 eprintln!("Error: {}", err);
                 if let Ok(mut wb) = xl::Workbook::open(&args[1]) {
@@ -12,9 +16,15 @@ fn main() {
                     for sheet_name in wb.sheets().by_name() {
                         eprintln!("   {}", sheet_name);
                     }
+                } else {
+                    eprintln!("(that workbook also does not seem to exist or is not a valid xlsx file)");
                 }
+                eprintln!("\nSee help by using -h flag.");
             },
-            _ => eprintln!("Error: {}", err),
+            _ => {
+                eprintln!("Error: {}", err);
+                eprintln!("\nSee help by using -h flag.");
+            },
         }
         process::exit(1);
     });

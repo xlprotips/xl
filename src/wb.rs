@@ -80,7 +80,6 @@ impl SheetMap {
     /// because I expect people who will use this library will be very used to that "style" and may
     /// expect the same thing in this library. If it becomes an issue, we can change it later).
     pub fn by_name(&self) -> Vec<&str> {
-      println!("{:?}", self.sheets_by_num);
         self.sheets_by_num
             .iter()
             .filter(|&s| s.is_some())

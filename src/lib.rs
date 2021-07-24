@@ -49,6 +49,8 @@ pub struct Config {
     tab: SheetNameOrNum,
     /// How many rows should we print?
     nrows: Option<u32>,
+    /// Should we show usage information?
+    want_help: bool,
 }
 
 pub enum ConfigError<'a> {
@@ -62,7 +64,7 @@ pub enum ConfigError<'a> {
 impl<'a> fmt::Display for ConfigError<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            ConfigError::NeedPathAndTab(exe) => write!(f, "Usage: {} <path-to-xlsx> <tab> [-n num-rows]", exe),
+            ConfigError::NeedPathAndTab(exe) => write!(f, "need to provide path and tab when running '{}'. See usage below.", exe),
             ConfigError::NeedTab => write!(f, "must also provide which tab you want to view in workbook"),
             ConfigError::RowsMustBeInt => write!(f, "number of rows must be an integer value"),
             ConfigError::NeedNumRows => write!(f, "must provide number of rows when using -n"),
@@ -76,14 +78,22 @@ impl Config {
         if args.len() < 2 {
             return Err(ConfigError::NeedPathAndTab(&args[0]))
         } else if args.len() < 3 {
-            return Err(ConfigError::NeedTab)
+            return match args[1].as_ref() {
+                "-h" | "--help" => Ok(Config {
+                    workbook_path: "".to_owned(),
+                    tab: SheetNameOrNum::Num(0),
+                    nrows: None,
+                    want_help: true,
+                }),
+                _ => Err(ConfigError::NeedTab)
+            }
         }
         let workbook_path = args[1].clone();
         let tab = match args[2].parse::<usize>() {
             Ok(num) => SheetNameOrNum::Num(num),
             Err(_) => SheetNameOrNum::Name(args[2].clone())
         };
-        let mut config = Config { workbook_path, tab, nrows: None };
+        let mut config = Config { workbook_path, tab, nrows: None, want_help: false };
         let mut iter = args[3..].iter();
         while let Some(flag) = iter.next() {
             let flag = &flag[..];
@@ -107,6 +117,10 @@ impl Config {
 }
 
 pub fn run(config: Config) -> Result<(), String> {
+    if config.want_help {
+        usage();
+        std::process::exit(0);
+    }
     match crate::Workbook::new(&config.workbook_path) {
         Ok(mut wb) => {
             let sheets = wb.sheets();
@@ -130,4 +144,29 @@ pub fn run(config: Config) -> Result<(), String> {
         },
         Err(e) => Err(e)
     }
+}
+
+pub fn usage() {
+    println!(concat!(
+        "\n",
+        "xlcat 0.1.2\n",
+        "Kevin Ryan <ktr@xlpro.tips>\n",
+        "\n",
+        "xlcat is like cat, but for Excel files (xlsx files to be precise). You simply\n",
+        "give it the path of the xlsx and the tab you want to view, and it prints the\n",
+        "data in that tab to your screen in a comma-delimited format.\n",
+        "\n",
+        "You can read about the project at https://xlpro.tips/posts/xlcat. The project\n",
+        "page is hosted at https://github.com/xlprotips/xl.\n",
+        "\n",
+        "USAGE:\n",
+        "  xlcat PATH TAB [-n NUM] [-h | --help]\n",
+        "\n",
+        "ARGS:\n",
+        "  PATH      Where the xlsx file is located on your filesystem.\n",
+        "  TAB       Which tab in the xlsx you want to print to screen.\n",
+        "\n",
+        "OPTIONS:\n",
+        "  -n <NUM>  Limit the number of rows we print to <NUM>.\n",
+    ));
 }
