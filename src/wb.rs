@@ -384,6 +384,7 @@ fn strings(zip_file: &mut ZipArchive<File>) -> Vec<String> {
             loop {
                 match reader.read_event(&mut buf) {
                     Ok(Event::Text(ref e)) => strings.push(e.unescape_and_decode(&reader).unwrap()),
+                    Ok(Event::Empty(ref e)) if e.name() == b"t" => strings.push("".to_owned()),
                     Ok(Event::Eof) => break,
                     Err(e) => panic!("Error at position {}: {:?}", reader.buffer_position(), e),
                     _ => (),

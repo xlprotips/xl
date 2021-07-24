@@ -2,6 +2,7 @@
 
 use crate::utils;
 
+use std::borrow::Cow;
 use std::cmp;
 use std::fmt;
 use std::io::BufReader;
@@ -143,7 +144,7 @@ pub enum ExcelValue<'a> {
     Error(String),
     None,
     Number(f64),
-    String(&'a str),
+    String(Cow<'a, str>),
     Time(NaiveTime),
 }
 
@@ -337,9 +338,12 @@ impl<'a> Iterator for RowIter<'a> {
                         c.raw_value = e.unescape_and_decode(&reader).unwrap();
                         c.value = match &c.cell_type[..] {
                             "s" | "str" => {
-                                let pos: usize = c.raw_value.parse().unwrap();
-                                let s = &strings[pos]; // .to_string()
-                                ExcelValue::String(s)
+                                if let Ok(pos) = c.raw_value.parse::<usize>() {
+                                    let s = &strings[pos]; // .to_string()
+                                    ExcelValue::String(Cow::Borrowed(s))
+                                } else {
+                                    ExcelValue::String(Cow::Owned(c.raw_value.clone()))
+                                }
                             },
                             "b" => {
                                 if c.raw_value == "0" {
@@ -435,5 +439,23 @@ fn is_date(cell: &Cell) -> bool {
         true
     } else {
         cell.style.contains('y')
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{ExcelValue, Workbook};
+    use std::borrow::Cow;
+
+    #[test]
+    fn test_ups() {
+        let mut wb = Workbook::open("./tests/data/UPS.Galaxy.VS.PX.xlsx").unwrap();
+        let sheets = wb.sheets();
+        let ws = sheets.get("Table001 (Page 1-19)").unwrap();
+        let mut row_iter = ws.rows(&mut wb);
+        let row2 = row_iter.nth(1).unwrap();
+        assert_eq!(row2[3].value, ExcelValue::Number(0.0));
+        let row3 = row_iter.next().unwrap();
+        assert_eq!(row3[4].value, ExcelValue::String(Cow::Borrowed("Bit")));
     }
 }
