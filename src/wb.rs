@@ -380,10 +380,31 @@ fn strings(zip_file: &mut ZipArchive<File>) -> Vec<String> {
             let mut reader = Reader::from_reader(reader);
             reader.trim_text(true);
             let mut buf = Vec::new();
+            let mut this_string = String::new();
+            let mut preserve_space = false;
             loop {
                 match reader.read_event(&mut buf) {
-                    Ok(Event::Text(ref e)) => strings.push(e.unescape_and_decode(&reader).unwrap()),
+                    Ok(Event::Start(ref e)) if e.name() == b"t" => {
+                        if let Some(att) = utils::get(e.attributes(), b"xml:space") {
+                            if att == "preserve" {
+                                preserve_space = true;
+                            } else {
+                                preserve_space = false;
+                            }
+                        } else {
+                            preserve_space = false;
+                        }
+                    },
+                    Ok(Event::Text(ref e)) => this_string.push_str(&e.unescape_and_decode(&reader).unwrap()[..]),
                     Ok(Event::Empty(ref e)) if e.name() == b"t" => strings.push("".to_owned()),
+                    Ok(Event::End(ref e)) if e.name() == b"t" => {
+                        if preserve_space {
+                            strings.push(this_string.to_owned());
+                        } else {
+                            strings.push(this_string.trim().to_owned());
+                        }
+                        this_string = String::new();
+                    },
                     Ok(Event::Eof) => break,
                     Err(e) => panic!("Error at position {}: {:?}", reader.buffer_position(), e),
                     _ => (),
