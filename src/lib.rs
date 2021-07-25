@@ -149,7 +149,7 @@ pub fn run(config: Config) -> Result<(), String> {
 pub fn usage() {
     println!(concat!(
         "\n",
-        "xlcat 0.1.5\n",
+        "xlcat 0.1.6\n",
         "Kevin Ryan <ktr@xlpro.tips>\n",
         "\n",
         "xlcat is like cat, but for Excel files (xlsx files to be precise). You simply\n",
