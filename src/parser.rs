@@ -11,17 +11,20 @@ enum TokenType {
     EqualEqual,
     Greater,
     GreaterEqual,
+    Ident,
     Ignore,
     LeftBrace,
     LeftParen,
     Less,
     LessEqual,
     Minus,
+    Number,
     Plus,
     RightBrace,
     RightParen,
     Semicolon,
     Star,
+    Str,
     Unknown,
 }
 
@@ -77,7 +80,7 @@ impl Lexer<'_> {
         if self.is_at_end() {
             return false
         }
-        if self.current != Some(expected) {
+        if self.peek != Some(expected) {
             return false
         }
         self.advance();
@@ -93,11 +96,41 @@ impl Lexer<'_> {
         let index = self.index;
         let value = self.lexeme.clone();
         self.lexeme.truncate(0);
+        self.index += 1;
         Token { index, token_type, value, }
     }
 
     fn peek(&self) -> char {
         self.peek.unwrap_or('\0')
+    }
+
+    fn string(&mut self) -> Token {
+        while self.peek() != '"' && !self.is_at_end() {
+            if self.peek() == '\n' { self.line += 1; }
+            self.advance();
+        }
+        if self.is_at_end() {
+            self.error("Unterminated string.".to_owned());
+            return self.token(TokenType::Unknown)
+        }
+        // closing "
+        self.advance();
+        self.lexeme = self.lexeme.strip_prefix('"').unwrap().strip_suffix('"').unwrap().to_owned();
+        self.token(TokenType::Str)
+    }
+
+    fn number(&mut self) -> Token {
+        while self.peek().is_ascii_digit() { self.advance(); }
+        if self.peek() == '.' {
+            self.advance();
+            while self.peek().is_ascii_digit() { self.advance(); }
+        }
+        self.token(TokenType::Number)
+    }
+
+    fn ident(&mut self) -> Token {
+        while self.peek().is_alphanumeric() { self.advance(); }
+        self.token(TokenType::Ident)
     }
 }
 
@@ -151,6 +184,9 @@ impl<'a> Iterator for Lexer<'a> {
                     }
                     Some(self.token(TokenType::Ignore))
                 },
+                '"' => Some(self.string()),
+                d if d.is_ascii_digit() => Some(self.number()),
+                c if c.is_alphabetic() => Some(self.ident()),
                 _ => {
                     self.error(format!("Unexpected character: {}.", c));
                     Some(self.token(TokenType::Unknown))
