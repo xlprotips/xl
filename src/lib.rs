@@ -31,11 +31,13 @@
 mod wb;
 mod ws;
 mod utils;
+mod parser;
 
 use std::fmt;
 pub use wb::Workbook;
 pub use ws::{Worksheet, ExcelValue};
 pub use utils::{col2num, excel_number_to_date, num2col};
+pub use parser::Lexer;
 
 enum SheetNameOrNum {
     Name(String),

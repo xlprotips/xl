@@ -3,6 +3,14 @@ use std::process;
 
 fn main() {
     let args: Vec<String> = env::args().collect();
+    if args.len() > 1 && args[1].chars().next() == Some('=') {
+        println!("Formula Testing!");
+        let lexer = xl::Lexer::new(&args[1]);
+        for token in lexer {
+            println!("{:?}", token);
+        }
+        process::exit(0);
+    }
     let config = xl::Config::new(&args).unwrap_or_else(|err| {
         match err {
             xl::ConfigError::NeedPathAndTab(_) => {
