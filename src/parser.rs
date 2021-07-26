@@ -105,18 +105,20 @@ impl Lexer<'_> {
     }
 
     fn string(&mut self) -> Token {
-        while self.peek() != '"' && !self.is_at_end() {
-            if self.peek() == '\n' { self.line += 1; }
-            self.advance();
+        while let Some(c) = self.advance() {
+            if c == '"' {
+                if self.peek() == '"' {
+                    self.advance();
+                } else {
+                    self.lexeme = self.lexeme.strip_prefix('"').unwrap().strip_suffix('"').unwrap().to_owned();
+                    return self.token(TokenType::Str)
+                }
+            } else if c == '\n' {
+                self.line += 1;
+            }
         }
-        if self.is_at_end() {
-            self.error("Unterminated string.".to_owned());
-            return self.token(TokenType::Unknown)
-        }
-        // closing "
-        self.advance();
-        self.lexeme = self.lexeme.strip_prefix('"').unwrap().strip_suffix('"').unwrap().to_owned();
-        self.token(TokenType::Str)
+        self.error("Unterminated string.".to_owned());
+        self.token(TokenType::Unknown)
     }
 
     fn number(&mut self) -> Token {
