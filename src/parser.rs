@@ -9,6 +9,7 @@ enum TokenType {
     Dot,
     Equal,
     EqualEqual,
+    Error,
     Greater,
     GreaterEqual,
     Ident,
@@ -20,6 +21,7 @@ enum TokenType {
     Minus,
     Number,
     Plus,
+    Range,
     RightBrace,
     RightParen,
     Semicolon,
@@ -87,7 +89,7 @@ impl Lexer<'_> {
         true
     }
 
-    fn error(&mut self, msg: String) {
+    fn error_msg(&mut self, msg: String) {
         self.had_error = true;
         eprintln!("[{}] {}", self.line, msg);
     }
@@ -104,21 +106,69 @@ impl Lexer<'_> {
         self.peek.unwrap_or('\0')
     }
 
+    fn strip_lexeme(&mut self, c: char) -> String {
+        self.lexeme.strip_prefix(c).unwrap_or(&self.lexeme).strip_suffix(c).unwrap_or(&self.lexeme).to_owned()
+    }
+
     fn string(&mut self) -> Token {
         while let Some(c) = self.advance() {
             if c == '"' {
                 if self.peek() == '"' {
                     self.advance();
                 } else {
-                    self.lexeme = self.lexeme.strip_prefix('"').unwrap().strip_suffix('"').unwrap().to_owned();
+                    self.lexeme = self.strip_lexeme('"');
                     return self.token(TokenType::Str)
                 }
             } else if c == '\n' {
                 self.line += 1;
             }
         }
-        self.error("Unterminated string.".to_owned());
+        self.error_msg("Unterminated string.".to_owned());
         self.token(TokenType::Unknown)
+    }
+
+    fn path(&mut self) -> Token {
+        while let Some(c) = self.advance() {
+            if c == '\'' {
+                if self.peek() == '\'' {
+                    self.advance();
+                } else {
+                    self.lexeme = self.strip_lexeme('\'');
+                    return self.token(TokenType::Str)
+                }
+            } else if c == '\n' {
+                self.line += 1;
+            }
+        }
+        self.error_msg("Unterminated path.".to_owned());
+        self.token(TokenType::Unknown)
+    }
+
+    fn range(&mut self) -> Token {
+        while let Some(c) = self.advance() {
+            if c == ']' {
+                return self.token(TokenType::Range)
+            }
+        }
+        self.error_msg("Unterminated range.".to_owned());
+        self.token(TokenType::Unknown)
+    }
+
+    fn error(&mut self) -> Token {
+        loop {
+            let c = self.peek();
+            if !(c.is_ascii_alphabetic() || c == '!' || c == '/' || c == '?' || c == '0') {
+                break
+            }
+            self.advance();
+        }
+        return match &self.lexeme[..] {
+            "#NULL!" | "#DIV/0" | "#VALUE!" | "#REF!" | "#NAME?" | "#NUM!" | "#N/A" => self.token(TokenType::Error),
+            _ => {
+                self.error_msg("Unterminated error.".to_owned());
+                self.token(TokenType::Unknown)
+            },
+        }
     }
 
     fn number(&mut self) -> Token {
@@ -187,10 +237,13 @@ impl<'a> Iterator for Lexer<'a> {
                     Some(self.token(TokenType::Ignore))
                 },
                 '"' => Some(self.string()),
+                '\'' => Some(self.path()),
+                '[' => Some(self.range()),
+                '#' => Some(self.error()),
                 d if d.is_ascii_digit() => Some(self.number()),
                 c if c.is_alphabetic() => Some(self.ident()),
                 _ => {
-                    self.error(format!("Unexpected character: {}.", c));
+                    self.error_msg(format!("Unexpected character: {}.", c));
                     Some(self.token(TokenType::Unknown))
                 }
             }
