@@ -22,6 +22,9 @@ mod parser {
         // Special symbol - basically, no special format
         General,
 
+        // there are (up to) four sections for number formats, broken up by semicolons.
+        SectionBreak,
+
         // Number related codes
         Zero, // digit or zero
         PoundSign, // digit (if needed)
@@ -299,6 +302,7 @@ mod parser {
                     },
                     'a' | 'A' => Some(self.time()),
                     ' ' => Some(self.slurp_same(TokenType::Text)),
+                    ';' => Some(self.token(TokenType::SectionBreak)),
                     _ => {
                         Some(self.token(TokenType::Text))
                     }
