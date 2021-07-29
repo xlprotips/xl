@@ -28,6 +28,7 @@
 //!         let sheet = sheets.get("Sheet1");
 //!     }
 
+mod formats;
 mod wb;
 mod ws;
 mod utils;
@@ -36,6 +37,7 @@ use std::fmt;
 pub use wb::Workbook;
 pub use ws::{Worksheet, ExcelValue};
 pub use utils::{col2num, excel_number_to_date, num2col};
+pub use formats::parse_format;
 
 enum SheetNameOrNum {
     Name(String),

@@ -3,6 +3,14 @@ use std::process;
 
 fn main() {
     let args: Vec<String> = env::args().collect();
+    if args.len() > 1 && args[1] == "-f" {
+        if args.len() > 2 {
+            xl::parse_format(&args[2]);
+        } else {
+            xl::parse_format("#,##0");
+        }
+        process::exit(1);
+    }
     let config = xl::Config::new(&args).unwrap_or_else(|err| {
         match err {
             xl::ConfigError::NeedPathAndTab(_) => {
