@@ -1,3 +1,7 @@
+use std::borrow::Cow;
+use chrono::{NaiveDate, NaiveDateTime, NaiveTime, Timelike};
+
+use crate::wb::DateSystem;
 
 mod parser {
     use std::str::Chars;
@@ -315,9 +319,78 @@ mod parser {
 
 }
 
-pub fn parse_format(format: &str) {
+use crate::ExcelValue;
+
+pub fn view_tokens(format: &str) {
     let scanner = parser::Lexer::new(format);
     for token in scanner {
         println!("{:?}", token);
     }
+}
+
+fn parse_format<'a>(format: &'a str) -> impl Fn(&ExcelValue) -> &'a str {
+    let scanner = parser::Lexer::new(format);
+    for token in scanner {
+        println!("{:?}", token);
+    }
+    let formatter = move |_: &ExcelValue| format;
+    formatter
+}
+
+impl ExcelValue<'_> {
+    pub fn format<'a>(&self, with: &'a str) -> &'a str {
+        let formatter = parse_format(with);
+        formatter(&self)
+    }
+}
+
+pub trait ToExcelValue {
+    fn to_excel(&self) -> ExcelValue;
+}
+
+pub fn format(value: impl ToExcelValue, with: &str) -> &str {
+    let v = value.to_excel();
+    v.format(with)
+}
+
+impl ToExcelValue for bool {
+    fn to_excel(&self) -> ExcelValue { ExcelValue::Bool(*self) }
+}
+
+impl ToExcelValue for &str {
+    fn to_excel(&self) -> ExcelValue { ExcelValue::String(Cow::Borrowed(self)) }
+}
+
+impl ToExcelValue for String {
+    fn to_excel(&self) -> ExcelValue { ExcelValue::String(Cow::Borrowed(&self)) }
+}
+
+impl ToExcelValue for NaiveDate {
+    fn to_excel(&self) -> ExcelValue {
+        let num = crate::date_to_excel_number(self, &DateSystem::V1900);
+        ExcelValue::Date(self.and_hms(0, 0, 0), num)
+    }
+}
+
+impl ToExcelValue for NaiveDateTime {
+    fn to_excel(&self) -> ExcelValue {
+        let num = crate::date_to_excel_number(self, &DateSystem::V1900);
+        ExcelValue::DateTime(*self, num)
+    }
+}
+
+impl ToExcelValue for NaiveTime {
+    fn to_excel(&self) -> ExcelValue {
+        let num = crate::date_to_excel_number(self, &DateSystem::V1900);
+        let date = NaiveDate::from_ymd(1899, 12, 31).and_hms(self.hour(), self.minute(), self.second());
+        ExcelValue::Time(date, num)
+    }
+}
+
+impl ToExcelValue for f64 {
+    fn to_excel(&self) -> ExcelValue { ExcelValue::Number(*self) }
+}
+
+impl ToExcelValue for i32 {
+    fn to_excel(&self) -> ExcelValue { ExcelValue::Number(f64::from(*self)) }
 }
