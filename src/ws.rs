@@ -8,7 +8,7 @@ use std::fmt;
 use std::io::BufReader;
 use std::mem;
 use std::ops::Index;
-use chrono::{NaiveDate, NaiveDateTime, NaiveTime};
+use chrono::{NaiveDateTime, NaiveTime};
 use zip::read::ZipFile;
 use quick_xml::Reader;
 use quick_xml::events::Event;
@@ -139,26 +139,26 @@ impl Worksheet {
 #[derive(Debug, PartialEq)]
 pub enum ExcelValue<'a> {
     Bool(bool),
-    Date(NaiveDate),
-    DateTime(NaiveDateTime),
+    Date(NaiveDateTime, f64),
+    DateTime(NaiveDateTime, f64),
     Error(String),
     None,
     Number(f64),
     String(Cow<'a, str>),
-    Time(NaiveTime),
+    Time(NaiveDateTime, f64),
 }
 
 impl fmt::Display for ExcelValue<'_> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             ExcelValue::Bool(b) => write!(f, "{}", b),
-            ExcelValue::Date(d) => write!(f, "{}", d),
-            ExcelValue::DateTime(d) => write!(f, "{}", d),
+            ExcelValue::Date(d, _) => write!(f, "{}", d.date()),
+            ExcelValue::DateTime(d, _) => write!(f, "{}", d),
             ExcelValue::Error(e) => write!(f, "#{}", e),
             ExcelValue::None => write!(f, ""),
             ExcelValue::Number(n) => write!(f, "{}", n),
             ExcelValue::String(s) => write!(f, "\"{}\"", s),
-            ExcelValue::Time(t) => write!(f, "\"{}\"", t),
+            ExcelValue::Time(t, _) => write!(f, "\"{}\"", t.time()),
         }
     }
 }
@@ -358,14 +358,22 @@ impl<'a> Iterator for RowIter<'a> {
                             "bl" => ExcelValue::None,
                             "e" => ExcelValue::Error(c.raw_value.to_string()),
                             _ if is_date(&c) => {
-                                let num = c.raw_value.parse::<f64>().unwrap();
-                                match utils::excel_number_to_date(num, date_system) {
-                                    utils::DateConversion::Date(date) => ExcelValue::Date(date),
-                                    utils::DateConversion::DateTime(date) => ExcelValue::DateTime(date),
-                                    utils::DateConversion::Time(time) => ExcelValue::Time(time),
-                                    utils::DateConversion::Number(num) => ExcelValue::Number(num as f64),
+                                if let Ok(num) = c.raw_value.parse::<f64>() {
+                                    match utils::excel_number_to_date(num, date_system) {
+                                        Ok(date) => {
+                                            if num.trunc() as isize == 0 {
+                                                ExcelValue::Time(date, num)
+                                            } else if date.time() == NaiveTime::from_hms(0, 0, 0) {
+                                                ExcelValue::Date(date, num)
+                                            } else {
+                                                ExcelValue::DateTime(date, num)
+                                            }
+                                        },
+                                        Err(num) => ExcelValue::Number(num as f64),
+                                    }
+                                } else {
+                                    ExcelValue::String(Cow::Owned(c.raw_value.clone()))
                                 }
-                                
                             },
                             _ => ExcelValue::Number(c.raw_value.parse::<f64>().unwrap()),
                         };

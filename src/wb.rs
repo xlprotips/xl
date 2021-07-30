@@ -5,6 +5,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::fs::File;
 use std::io::BufReader;
+use chrono::{NaiveDate, NaiveDateTime};
 use quick_xml::Reader;
 use quick_xml::events::Event;
 use zip::ZipArchive;
@@ -22,10 +23,19 @@ use crate::utils;
 /// number represents unless you also know the date system the spreadsheet uses.
 ///
 /// See <https://tinyurl.com/4syjy6cw> for more information.
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum DateSystem {
     V1900,
     V1904,
+}
+
+impl DateSystem {
+    pub fn base(&self) -> NaiveDateTime {
+        match self {
+            DateSystem::V1900 => NaiveDate::from_ymd(1899, 12, 31).and_hms(0, 0, 0),
+            DateSystem::V1904 => NaiveDate::from_ymd(1904,  1,  1).and_hms(0, 0, 0),
+        }
+    }
 }
 
 /// The Workbook is the primary object you will use in this module. The public interface allows you

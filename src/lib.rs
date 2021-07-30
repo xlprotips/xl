@@ -36,8 +36,8 @@ mod utils;
 use std::fmt;
 pub use wb::Workbook;
 pub use ws::{Worksheet, ExcelValue};
-pub use utils::{col2num, excel_number_to_date, num2col};
 pub use formats::parse_format;
+pub use utils::{col2num, date_to_excel_number, excel_number_to_date, num2col};
 
 enum SheetNameOrNum {
     Name(String),
