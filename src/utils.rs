@@ -1,10 +1,11 @@
 use std::convert::TryInto;
-use chrono::{Duration, NaiveDate, NaiveDateTime, NaiveTime};
+use chrono::{Duration, NaiveDate, NaiveDateTime, NaiveTime, Timelike};
 use quick_xml::events::attributes::{Attribute, Attributes};
 use crate::wb::DateSystem;
 
 const XL_MAX_COL: u16 = 16384;
 const XL_MIN_COL: u16 = 1;
+
 
 /// Return column letter for column number `n`
 pub fn num2col(n: u16) -> Option<String> {
@@ -45,24 +46,20 @@ pub fn get(attrs: Attributes, which: &[u8]) -> Option<String> {
     None
 }
 
-pub enum DateConversion {
-    Date(NaiveDate),
-    DateTime(NaiveDateTime),
-    Time(NaiveTime),
-    Number(i64),
-}
-
 ///  Return date of "number" based on the date system provided.
 ///
 ///  The date system is either the 1904 system or the 1900 system depending on which date system
 ///  the spreadsheet is using. See <http://bit.ly/2He5HoD> for more information on date systems in
 ///  Excel.
-pub fn excel_number_to_date(number: f64, date_system: &DateSystem) -> DateConversion {
+///
+///  Some numbers that Excel provides may not properly convert into a date. In such circumstances,
+///  we return the representative number of days before the base date that the number represents.
+pub fn excel_number_to_date(number: f64, date_system: &DateSystem) -> Result<NaiveDateTime, i64> {
     let base = match date_system {
         DateSystem::V1900 => {
             // Under the 1900 base system, 1 represents 1/1/1900 (so we start with a base date of
             // 12/31/1899).
-            let mut base = NaiveDate::from_ymd(1899, 12, 31).and_hms(0, 0, 0);
+            let mut base = date_system.base();
             // BUT (!), Excel considers 1900 a leap-year which it is not. As such, it will happily
             // represent 2/29/1900 with the number 60, but we cannot convert that value to a date
             // so we throw an error.
@@ -78,25 +75,46 @@ pub fn excel_number_to_date(number: f64, date_system: &DateSystem) -> DateConver
         DateSystem::V1904 => {
             // Under the 1904 system, 1 represent 1/2/1904 so we start with a base date of
             // 1/1/1904.
-            NaiveDate::from_ymd(1904, 1, 1).and_hms(0, 0, 0)
+            date_system.base()
         }
     };
     let days = number.trunc() as i64;
     if days < -693594 {
-        return DateConversion::Number(days)
+        return Err(days)
     }
     let partial_days = number - (days as f64);
     let seconds = (partial_days * 86400000.0).round() as i64;
     let milliseconds = Duration::milliseconds(seconds % 1000);
     let seconds = Duration::seconds(seconds / 1000);
     let date = base + Duration::days(days) + seconds + milliseconds;
-    if days == 0 {
-        DateConversion::Time(date.time())
-    } else if date.time() == NaiveTime::from_hms(0, 0, 0) {
-        DateConversion::Date(date.date())
-    } else {
-        DateConversion::DateTime(date)
+    Ok(date)
+}
+
+pub trait ToDateTime {
+    fn to_datetime(&self) -> NaiveDateTime;
+}
+
+impl ToDateTime for &NaiveDateTime {
+    fn to_datetime(&self) -> NaiveDateTime { **self }
+}
+
+impl ToDateTime for &NaiveDate {
+    fn to_datetime(&self) -> NaiveDateTime { self.and_hms(0, 0, 0) }
+}
+
+impl ToDateTime for &NaiveTime {
+    fn to_datetime(&self) -> NaiveDateTime {
+        let hour = self.hour();
+        let min = self.minute();
+        let sec = self.second();
+        DateSystem::V1900.base().date().and_hms(hour, min, sec)
     }
+}
+
+pub fn date_to_excel_number(date: impl ToDateTime, date_system: &DateSystem) -> f64 {
+    let diff = date.to_datetime() - date_system.base();
+    let adj = if *date_system == DateSystem::V1900 && diff.num_days() >= 60 { 1.0 } else { 0.0 };
+    diff.num_milliseconds() as f64 / 1000.0 / 60.0 / 60.0 / 24.0 + adj
 }
 
 #[cfg(test)]
@@ -171,5 +189,57 @@ mod tests {
     #[test]
     fn letter_to_num_semicolon() {
         assert_eq!(col2num(";"), None);
+    }
+
+    #[test]
+    fn v1900_num_to_date() {
+        let expect = NaiveDate::from_ymd(1899, 12, 31).and_hms(0, 0, 0);
+        match excel_number_to_date(0.0, &DateSystem::V1900) {
+            Ok(date) => assert_eq!(date, expect),
+            x => assert!(false, "did not convert 0.0 to proper date {:?}", x),
+        }
+    }
+
+    #[test]
+    fn v1900_num_after_bad_leap_to_date() {
+        let expect = NaiveDate::from_ymd(1900, 3, 15).and_hms(0, 0, 0);
+        match excel_number_to_date(75.0, &DateSystem::V1900) {
+            Ok(date) => assert_eq!(date, expect),
+            x => assert!(false, "did not convert 0.0 to proper date {:?}", x),
+        }
+    }
+
+    #[test]
+    fn v1900_num_with_time_date() {
+        let expect = NaiveDate::from_ymd(1903, 5, 31).and_hms_milli(2, 17, 3, 34);
+        match excel_number_to_date(1247.095174, &DateSystem::V1900) {
+            Ok(date) => assert_eq!(date, expect),
+            x => assert!(false, "did not convert 0.0 to proper date {:?}", x),
+        }
+    }
+
+    #[test]
+    fn v1900_date_to_num() {
+        assert_eq!(0.0, date_to_excel_number(&NaiveDate::from_ymd(1899, 12, 31), &DateSystem::V1900));
+    }
+
+    #[test]
+    fn v1900_bad_leap() {
+        assert_eq!(61.0, date_to_excel_number(&NaiveDate::from_ymd(1900, 3, 1), &DateSystem::V1900));
+    }
+
+    #[test]
+    fn v1900_before_bad_leap() {
+        assert_eq!(59.0, date_to_excel_number(&NaiveDate::from_ymd(1900, 2, 28), &DateSystem::V1900));
+    }
+
+    #[test]
+    fn v1900_with_time() {
+        assert_eq!(128.5625, date_to_excel_number(&NaiveDate::from_ymd(1900, 5, 7).and_hms(13, 30, 0), &DateSystem::V1900));
+    }
+
+    #[test]
+    fn v1904_date_to_num() {
+        assert_eq!(0.0, date_to_excel_number(&NaiveDate::from_ymd(1904, 1, 1), &DateSystem::V1904));
     }
 }
