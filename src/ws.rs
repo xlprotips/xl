@@ -152,6 +152,12 @@ impl From<&ExcelValue<'_>> for String {
     fn from(v: &ExcelValue) -> Self {
         match v {
             &ExcelValue::Bool(b) => if b { "true".to_owned() } else { "false".to_owned() },
+            ExcelValue::String(s) => {
+                match s {
+                    Cow::Owned(s) => s.clone(),
+                    Cow::Borrowed(s) => s.to_string(),
+                }
+            },
             _ => "".to_owned(),
         }
     }

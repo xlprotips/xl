@@ -4,7 +4,7 @@ use std::process;
 fn main() {
     let args: Vec<String> = env::args().collect();
     if args.len() > 1 && args[1] == "-f" {
-        xl::test_format_number("9123.456");
+        println!("{}", xl::format("9123.456", "#,##0.00"));
         process::exit(1);
     }
     let config = xl::Config::new(&args).unwrap_or_else(|err| {

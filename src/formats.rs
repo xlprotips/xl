@@ -17,7 +17,8 @@ mod parser {
         // Number related codes
         Zero, // digit or zero
         PoundSign, // digit (if needed)
-        Comma, // thousands separator
+        Thousands, // comma, thousands separator
+        Comma, // divide number by 100 (opposite of %)
         Period, // show decimal point for numbers
         Slash, // fractions
         Percent, // multiply number by and add percent sign
@@ -70,6 +71,10 @@ mod parser {
         pub fn token_type(&self) -> &TokenType {
             &self.token_type
         }
+
+        pub fn value(&self) -> &String {
+            &self.value
+        }
     }
 
     #[derive(Debug)]
@@ -89,7 +94,7 @@ mod parser {
         // did we have any challenges parsing the format?
         had_error: bool,
         // list of tokens that we've seen so far
-        tokens: Option<Vec<Token>>,
+        tokens: Vec<Token>,
     }
 
     impl Lexer<'_> {
@@ -104,24 +109,51 @@ mod parser {
                 index: 1,
                 lexeme: String::new(),
                 had_error: false,
-                tokens: None,
+                tokens: vec![],
             };
             lexer.prime();
             lexer
         }
 
         fn prime(&mut self) {
-            let mut tokens = Vec::new();
+            let mut tokens: Vec<Token> = vec![];
+            let mut saw_dot = false;
+            let mut saw_num_placeholder = false;
             'main: loop {
                 if let Some(c) = self.advance() {
                     let next_token = match c {
-                        '0' => self.token(TokenType::Zero),
-                        '#' => self.token(TokenType::PoundSign),
+                        '0' => {
+                            saw_num_placeholder = true;
+                            self.token(TokenType::Zero)
+                        },
+                        '#' => {
+                            saw_num_placeholder = true;
+                            self.token(TokenType::PoundSign)
+                        },
                         '?' => self.token(TokenType::QuestionMark),
                         ',' => {
-                            self.token(TokenType::Comma)
+                            if saw_dot && self.peek() == '\0' {
+                                self.token(TokenType::Comma)
+                            } else if saw_dot {
+                                self.clear(); // ignore
+                                continue 'main
+                            } else if saw_num_placeholder {
+                                while self.peek() == ',' {
+                                    self.advance();
+                                }
+                                if self.peek() == '.' || self.peek() == '\0' {
+                                    self.token(TokenType::Comma)
+                                } else {
+                                    self.token(TokenType::Thousands)
+                                }
+                            } else {
+                                self.token(TokenType::Text)
+                            }
                         },
-                        '.' => self.token(TokenType::Period),
+                        '.' => {
+                            saw_dot = true;
+                            self.token(TokenType::Period)
+                        },
                         '/' => self.token(TokenType::Slash),
                         '%' => self.token(TokenType::Percent),
                         'e' | 'E' => self.exponential(),
@@ -178,7 +210,7 @@ mod parser {
                     };
                     tokens.push(next_token);
                 } else {
-                    self.tokens = Some(tokens);
+                    self.tokens = tokens;
                     return
                 }
             }
@@ -204,6 +236,10 @@ mod parser {
             self.lexeme.truncate(0);
             self.index += 1;
             Token { index, token_type, value, }
+        }
+
+        fn clear(&mut self) {
+            self.lexeme.truncate(0);
         }
 
         fn peek(&self) -> char {
@@ -322,11 +358,7 @@ mod parser {
         type Item = Token;
         type IntoIter = ::std::vec::IntoIter<Token>;
         fn into_iter(self) -> Self::IntoIter {
-            if let Some(tokens) = self.tokens {
-                tokens.into_iter()
-            } else {
-                panic!("This shouldn't be possible");
-            }
+            self.tokens.into_iter()
         }
     }
 
@@ -334,11 +366,7 @@ mod parser {
         type Item = &'a Token;
         type IntoIter = ::std::slice::Iter<'a, Token>;
         fn into_iter(self) -> Self::IntoIter {
-            if let Some(tokens) = &self.tokens {
-                tokens.iter()
-            } else {
-                panic!("This shouldn't be possible");
-            }
+            self.tokens.iter()
         }
     }
 
@@ -371,15 +399,18 @@ impl Iterator for Pad {
     }
 }
 
+#[derive(Debug)]
 struct Formatter {
-    number_of_required_digits: Option<usize>,
+    number_of_required_digits: usize,
     extra_chars: Vec<(usize, String)>,
     show_commas: bool,
     number_of_decimals: Option<usize>,
+    divide_by: usize,
+    multiply_by: usize,
 }
 
 fn format_number(num: &str, formatter: Formatter) -> String {
-    println!("Formatting {}", num);
+    println!("Formatting {} with {:?}", num, &formatter);
     let extra_chars = formatter.extra_chars;
     let mut extra_chars_idx = extra_chars.len();
     let mut formatted = String::new();
@@ -388,8 +419,15 @@ fn format_number(num: &str, formatter: Formatter) -> String {
     } else {
         (num, "")
     };
-    let min_digits = formatter.number_of_required_digits.unwrap_or(0);
-    let pad = Pad { with: '0', n_times: (min_digits - whole.len()).max(0) };
+    let min_digits = formatter.number_of_required_digits;
+    let pad = Pad {
+        with: '0',
+        n_times: if min_digits > whole.len() {
+            min_digits - whole.len()
+        } else {
+            0
+        }
+    };
     let mut iorig = whole.len() + pad.n_times;
     for (i, c) in whole.chars().rev().chain(pad).enumerate() {
         if extra_chars_idx > 0 {
@@ -409,8 +447,13 @@ fn format_number(num: &str, formatter: Formatter) -> String {
         formatted.push_str(&extra_chars[extra_chars_idx-1].1);
     }
     formatted = formatted.chars().rev().collect();
-    if let Some(n) = formatter.number_of_decimals {
-        for c in decimal.chars().take(n) {
+    if formatter.number_of_decimals.is_some() {
+        let n = formatter.number_of_decimals.unwrap();
+        let mut chars = decimal.chars();
+        if n > 0 {
+            if let Some(dot) = chars.next() { formatted.push(dot) }
+        }
+        for c in chars.take(formatter.number_of_decimals.unwrap()) {
             formatted.push(c);
         }
     } else {
@@ -467,34 +510,35 @@ pub fn test_format_number(num: &str) {
 fn parse_format(format: &str) -> impl FnOnce(&ExcelValue) -> String {
     let scanner = parser::Lexer::new(format);
     let mut number_formatter = Formatter {
-        number_of_required_digits: None,
+        number_of_required_digits: 0,
         extra_chars: vec![],
         show_commas: false,
         number_of_decimals: None,
+        divide_by: 1,
+        multiply_by: 1,
     };
     let mut seen_period = false;
     for token in scanner {
         match token.token_type() {
             TokenType::Zero => {
                 if seen_period {
-                    let n = number_formatter.number_of_required_digits.get_or_insert(0);
-                    *n += 1;
+                    if let Some(n) = number_formatter.number_of_decimals {
+                        number_formatter.number_of_decimals = Some(n + 1);
+                    } else {
+                        number_formatter.number_of_decimals = Some(1);
+                    }
                 } else {
-                    let n = number_formatter.number_of_decimals.get_or_insert(0);
-                    *n += 1;
+                    number_formatter.number_of_required_digits += 1;
                 }
             },
             TokenType::PoundSign => (),
-            TokenType::Comma => {
-                if number_formatter.number_of_required_digits.is_some() {
-                    number_formatter.show_commas = true;
-                } else {
-                    // number_formatter.extra_chars[]
-                }
-            },
+            TokenType::Comma => number_formatter.divide_by = token.value().len() * 1000,
+            TokenType::Thousands => number_formatter.show_commas = true,
             TokenType::Period => seen_period = true,
             TokenType::Slash => (),
-            TokenType::Percent => (),
+            TokenType::Percent => {
+                number_formatter.multiply_by = token.value().len() * 100;
+            },
             TokenType::Exponential => (),
             TokenType::QuestionMark => (),
             TokenType::Underscore => (),
