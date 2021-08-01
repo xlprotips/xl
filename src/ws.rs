@@ -148,6 +148,15 @@ pub enum ExcelValue<'a> {
     Time(NaiveDateTime, f64),
 }
 
+impl From<&ExcelValue<'_>> for String {
+    fn from(v: &ExcelValue) -> Self {
+        match v {
+            &ExcelValue::Bool(b) => if b { "true".to_owned() } else { "false".to_owned() },
+            _ => "".to_owned(),
+        }
+    }
+}
+
 impl fmt::Display for ExcelValue<'_> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {

@@ -4,12 +4,7 @@ use std::process;
 fn main() {
     let args: Vec<String> = env::args().collect();
     if args.len() > 1 && args[1] == "-f" {
-        if args.len() > 2 {
-            xl::view_tokens(&args[2]);
-        } else {
-            xl::view_tokens("#,##0");
-            println!("{}", xl::format(12, "#,##0"));
-        }
+        xl::test_format_number("9123.456");
         process::exit(1);
     }
     let config = xl::Config::new(&args).unwrap_or_else(|err| {
