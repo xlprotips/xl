@@ -401,10 +401,10 @@ impl Iterator for Pad {
 
 #[derive(Debug)]
 struct Formatter {
-    number_of_required_digits: usize,
+    min_digits: usize,
     extra_chars: Vec<(usize, String)>,
     show_commas: bool,
-    number_of_decimals: Option<usize>,
+    max_decimals: Option<usize>,
     divide_by: usize,
     multiply_by: usize,
 }
@@ -419,7 +419,7 @@ fn format_number(num: &str, formatter: Formatter) -> String {
     } else {
         (num, "")
     };
-    let min_digits = formatter.number_of_required_digits;
+    let min_digits = formatter.min_digits;
     let pad = Pad {
         with: '0',
         n_times: if min_digits > whole.len() {
@@ -447,13 +447,13 @@ fn format_number(num: &str, formatter: Formatter) -> String {
         formatted.push_str(&extra_chars[extra_chars_idx-1].1);
     }
     formatted = formatted.chars().rev().collect();
-    if formatter.number_of_decimals.is_some() {
-        let n = formatter.number_of_decimals.unwrap();
+    if formatter.max_decimals.is_some() {
+        let n = formatter.max_decimals.unwrap();
         let mut chars = decimal.chars();
         if n > 0 {
             if let Some(dot) = chars.next() { formatted.push(dot) }
         }
-        for c in chars.take(formatter.number_of_decimals.unwrap()) {
+        for c in chars.take(formatter.max_decimals.unwrap()) {
             formatted.push(c);
         }
     } else {
@@ -510,10 +510,10 @@ pub fn test_format_number(num: &str) {
 fn parse_format(format: &str) -> impl FnOnce(&ExcelValue) -> String {
     let scanner = parser::Lexer::new(format);
     let mut number_formatter = Formatter {
-        number_of_required_digits: 0,
+        min_digits: 0,
         extra_chars: vec![],
         show_commas: false,
-        number_of_decimals: None,
+        max_decimals: None,
         divide_by: 1,
         multiply_by: 1,
     };
@@ -522,17 +522,17 @@ fn parse_format(format: &str) -> impl FnOnce(&ExcelValue) -> String {
         match token.token_type() {
             TokenType::Zero => {
                 if seen_period {
-                    if let Some(n) = number_formatter.number_of_decimals {
-                        number_formatter.number_of_decimals = Some(n + 1);
+                    if let Some(n) = number_formatter.max_decimals {
+                        number_formatter.max_decimals = Some(n + 1);
                     } else {
-                        number_formatter.number_of_decimals = Some(1);
+                        number_formatter.max_decimals = Some(1);
                     }
                 } else {
-                    number_formatter.number_of_required_digits += 1;
+                    number_formatter.min_digits += 1;
                 }
             },
             TokenType::PoundSign => (),
-            TokenType::Comma => number_formatter.divide_by = token.value().len() * 1000,
+            TokenType::Comma => number_formatter.divide_by *= token.value().len() * 1000,
             TokenType::Thousands => number_formatter.show_commas = true,
             TokenType::Period => seen_period = true,
             TokenType::Slash => (),
