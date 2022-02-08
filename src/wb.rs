@@ -582,5 +582,15 @@ mod tests {
             let sheets = wb.sheets();
             assert_eq!(sheets.get("Time").unwrap().name, "Time");
         }
+
+        #[test]
+        fn inline_strings() {
+            let mut wb = Workbook::open("tests/data/inlinestrings.xlsx").unwrap();
+            let sheets = wb.sheets();
+            let ws = sheets.get("Sheet Name").unwrap();
+            let row1 = ws.rows(&mut wb).nth(0).unwrap();
+            let v1 = &row1[0];
+            assert_eq!(v1.to_string(), "Cell A1".to_string());
+        }
     }
 }
