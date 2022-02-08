@@ -75,5 +75,5 @@ You can run tests with the standard `cargo test`.
 
 ## License
 
-The project is licensed under the MIT License - see the [License](/LICENSE.md)
+The project is licensed under the MIT License - see the [License](/LICENSE.txt)
 file for details
