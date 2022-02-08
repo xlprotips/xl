@@ -338,7 +338,7 @@ impl<'a> Iterator for RowIter<'a> {
                                 }
                             });
                     },
-                    Ok(Event::Start(ref e)) if e.name() == b"v" => {
+                    Ok(Event::Start(ref e)) if e.name() == b"v" || e.name() == b"t" => {
                         in_value = true;
                     },
                     // note: because v elements are children of c elements,
@@ -354,7 +354,7 @@ impl<'a> Iterator for RowIter<'a> {
                                     ExcelValue::String(Cow::Owned(c.raw_value.clone()))
                                 }
                             },
-                            "str" => {
+                            "str" | "inlineStr" => {
                                 ExcelValue::String(Cow::Owned(c.raw_value.clone()))
                             },
                             "b" => {
@@ -383,7 +383,7 @@ impl<'a> Iterator for RowIter<'a> {
                         let txt = e.unescape_and_decode(&reader).unwrap();
                         c.formula.push_str(&txt)
                     },
-                    Ok(Event::End(ref e)) if e.name() == b"v" => {
+                    Ok(Event::End(ref e)) if e.name() == b"v" || e.name() == b"t" => {
                         in_value = false;
                     },
                     Ok(Event::End(ref e)) if e.name() == b"c" => {
