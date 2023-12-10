@@ -51,6 +51,8 @@ pub struct Config {
     nrows: Option<u32>,
     /// Should we show usage information?
     want_help: bool,
+    /// Should we show the current version?
+    want_version: bool,
 }
 
 pub enum ConfigError<'a> {
@@ -83,7 +85,15 @@ impl Config {
                     workbook_path: "".to_owned(),
                     tab: SheetNameOrNum::Num(0),
                     nrows: None,
+                    want_version: false,
                     want_help: true,
+                }),
+                "-v" | "--version" => Ok(Config {
+                    workbook_path: "".to_owned(),
+                    tab: SheetNameOrNum::Num(0),
+                    nrows: None,
+                    want_version: true,
+                    want_help: false,
                 }),
                 _ => Err(ConfigError::NeedTab)
             }
@@ -93,7 +103,7 @@ impl Config {
             Ok(num) => SheetNameOrNum::Num(num),
             Err(_) => SheetNameOrNum::Name(args[2].clone())
         };
-        let mut config = Config { workbook_path, tab, nrows: None, want_help: false };
+        let mut config = Config { workbook_path, tab, nrows: None, want_help: false, want_version: false, };
         let mut iter = args[3..].iter();
         while let Some(flag) = iter.next() {
             let flag = &flag[..];
@@ -119,6 +129,10 @@ impl Config {
 pub fn run(config: Config) -> Result<(), String> {
     if config.want_help {
         usage();
+        std::process::exit(0);
+    }
+    if config.want_version {
+        version();
         std::process::exit(0);
     }
     match crate::Workbook::new(&config.workbook_path) {
@@ -149,7 +163,7 @@ pub fn run(config: Config) -> Result<(), String> {
 pub fn usage() {
     println!(concat!(
         "\n",
-        "xlcat 0.1.6\n",
+        "xlcat 0.1.8\n",
         "Kevin Ryan <ktr@xlpro.tips>\n",
         "\n",
         "xlcat is like cat, but for Excel files (xlsx files to be precise). You simply\n",
@@ -169,4 +183,8 @@ pub fn usage() {
         "OPTIONS:\n",
         "  -n <NUM>  Limit the number of rows we print to <NUM>.\n",
     ));
+}
+
+pub fn version() {
+    println!("xlcat 0.1.8");
 }
