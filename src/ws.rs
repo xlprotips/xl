@@ -85,10 +85,8 @@ fn used_area(used_area_range: &str) -> (u32, u16) {
 pub struct Worksheet {
     pub name: String,
     pub position: u8,
-    relationship_id: String,
     /// location where we can find this worksheet in its xlsx file
     target: String,
-    sheet_id: u8,
 }
 
 impl Worksheet {
@@ -101,8 +99,8 @@ impl Worksheet {
     ///     let sheets = wb.sheets();
     ///     let ws = sheets.get("Time");
     ///     assert!(ws.is_some());
-    pub fn new(relationship_id: String, name: String, position: u8, target: String, sheet_id: u8) -> Self {
-        Worksheet { name, position, relationship_id, target, sheet_id }
+    pub fn new(name: String, position: u8, target: String) -> Self {
+        Worksheet { name, position, target, }
     }
 
     /// Obtain a `RowIter` for this worksheet (that is in `workbook`). This is, arguably, the main
@@ -157,7 +155,7 @@ impl fmt::Display for ExcelValue<'_> {
             ExcelValue::Error(e) => write!(f, "#{}", e),
             ExcelValue::None => write!(f, ""),
             ExcelValue::Number(n) => write!(f, "{}", n),
-            ExcelValue::String(s) => write!(f, "\"{}\"", s),
+            ExcelValue::String(s) => write!(f, "\"{}\"", s.replace(r#"""#, r#""""#)),
             ExcelValue::Time(t) => write!(f, "\"{}\"", t),
         }
     }
