@@ -40,7 +40,7 @@ pub enum DateSystem {
 pub struct Workbook {
     pub path: String,
     xls: ZipArchive<fs::File>,
-    encoding: String,
+    // encoding: String,
     pub date_system: DateSystem,
     strings: Vec<String>,
     styles: Vec<String>,
@@ -268,7 +268,7 @@ impl Workbook {
                                     "xl/".to_owned() + s
                                 }
                             };
-                            let ws = Worksheet::new(id, name, current_sheet_num, target, num);
+                            let ws = Worksheet::new(name, current_sheet_num, target);
                             sheets.sheets_by_num.push(Some(ws));
                         },
                         Ok(Event::Eof) => {
@@ -319,7 +319,7 @@ impl Workbook {
                 Ok(Workbook {
                     path: path.to_string(),
                     xls,
-                    encoding: String::from("utf8"),
+                    // encoding: String::from("utf8"),
                     date_system,
                     strings,
                     styles,
