@@ -37,6 +37,12 @@ pub use wb::Workbook;
 pub use ws::{Worksheet, ExcelValue};
 pub use utils::{col2num, excel_number_to_date, num2col};
 
+#[derive(Debug, Clone, PartialEq)]
+pub enum OutputFormat {
+    Csv,
+    Markdown,
+}
+
 enum SheetNameOrNum {
     Name(String),
     Num(usize),
@@ -53,6 +59,8 @@ pub struct Config {
     want_help: bool,
     /// Should we show the current version?
     want_version: bool,
+    /// What output format should we use?
+    pub output_format: OutputFormat,
 }
 
 pub enum ConfigError<'a> {
@@ -61,6 +69,8 @@ pub enum ConfigError<'a> {
     RowsMustBeInt,
     NeedNumRows,
     UnknownFlag(&'a str),
+    InvalidFormat(&'a str),
+    NeedFormat,
 }
 
 impl<'a> fmt::Display for ConfigError<'a> {
@@ -71,6 +81,8 @@ impl<'a> fmt::Display for ConfigError<'a> {
             ConfigError::RowsMustBeInt => write!(f, "number of rows must be an integer value"),
             ConfigError::NeedNumRows => write!(f, "must provide number of rows when using -n"),
             ConfigError::UnknownFlag(flag) => write!(f, "unknown flag: {}", flag),
+            ConfigError::InvalidFormat(fmt) => write!(f, "invalid format '{}'. Valid formats are 'csv' and 'markdown'", fmt),
+            ConfigError::NeedFormat => write!(f, "must provide format when using --fmt"),
         }
     }
 }
@@ -87,6 +99,7 @@ impl Config {
                     nrows: None,
                     want_version: false,
                     want_help: true,
+                    output_format: OutputFormat::Csv,
                 }),
                 "-v" | "--version" => Ok(Config {
                     workbook_path: "".to_owned(),
@@ -94,6 +107,7 @@ impl Config {
                     nrows: None,
                     want_version: true,
                     want_help: false,
+                    output_format: OutputFormat::Csv,
                 }),
                 _ => Err(ConfigError::NeedTab)
             }
@@ -103,7 +117,7 @@ impl Config {
             Ok(num) => SheetNameOrNum::Num(num),
             Err(_) => SheetNameOrNum::Name(args[2].clone())
         };
-        let mut config = Config { workbook_path, tab, nrows: None, want_help: false, want_version: false, };
+        let mut config = Config { workbook_path, tab, nrows: None, want_help: false, want_version: false, output_format: OutputFormat::Csv, };
         let mut iter = args[3..].iter();
         while let Some(flag) = iter.next() {
             let flag = &flag[..];
@@ -117,6 +131,17 @@ impl Config {
                         }
                     } else {
                         return Err(ConfigError::NeedNumRows)
+                    }
+                },
+                "--fmt" => {
+                    if let Some(format) = iter.next() {
+                        match format.as_ref() {
+                            "csv" => config.output_format = OutputFormat::Csv,
+                            "markdown" => config.output_format = OutputFormat::Markdown,
+                            _ => return Err(ConfigError::InvalidFormat(format)),
+                        }
+                    } else {
+                        return Err(ConfigError::NeedFormat)
                     }
                 },
                 _ => return Err(ConfigError::UnknownFlag(flag)),
@@ -148,8 +173,28 @@ pub fn run(config: Config) -> Result<(), String> {
                 } else {
                     1048576 // max number of rows in an Excel worksheet
                 };
-                for row in ws.rows(&mut wb).take(nrows) {
-                    println!("{}", row);
+                match config.output_format {
+                    OutputFormat::Csv => {
+                        for row in ws.rows(&mut wb).take(nrows) {
+                            println!("{}", row);
+                        }
+                    },
+                    OutputFormat::Markdown => {
+                        let mut header_printed = false;
+                        for row in ws.rows(&mut wb).take(nrows) {
+                            let formatted = if !header_printed && row.is_likely_header() {
+                                header_printed = true;
+                                row.format_markdown(true)
+                            } else {
+                                row.format_markdown(false)
+                            };
+                            
+                            // Only print if not empty (empty rows return empty strings)
+                            if !formatted.is_empty() {
+                                println!("{}", formatted);
+                            }
+                        }
+                    },
                 }
             } else {
                 return Err("that sheet does not exist".to_owned())
@@ -174,14 +219,15 @@ pub fn usage() {
         "page is hosted at https://github.com/xlprotips/xl.\n",
         "\n",
         "USAGE:\n",
-        "  xlcat PATH TAB [-n NUM] [-h | --help]\n",
+        "  xlcat PATH TAB [-n NUM] [--fmt FORMAT] [-h | --help]\n",
         "\n",
         "ARGS:\n",
         "  PATH      Where the xlsx file is located on your filesystem.\n",
         "  TAB       Which tab in the xlsx you want to print to screen.\n",
         "\n",
         "OPTIONS:\n",
-        "  -n <NUM>  Limit the number of rows we print to <NUM>.\n",
+        "  -n <NUM>     Limit the number of rows we print to <NUM>.\n",
+        "  --fmt FORMAT Output format: 'csv' (default) or 'markdown'.\n",
     ));
 }
 
