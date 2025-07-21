@@ -180,20 +180,17 @@ pub fn run(config: Config) -> Result<(), String> {
                         }
                     },
                     OutputFormat::Markdown => {
-                        let mut header_printed = false;
+                        // Collect all CSV rows first, then convert to markdown
+                        let mut csv_rows: Vec<String> = Vec::new();
                         for row in ws.rows(&mut wb).take(nrows) {
-                            let formatted = if !header_printed && row.is_likely_header() {
-                                header_printed = true;
-                                row.format_markdown(true)
-                            } else {
-                                row.format_markdown(false)
-                            };
-                            
-                            // Only print if not empty (empty rows return empty strings)
-                            if !formatted.is_empty() {
-                                println!("{}", formatted);
+                            let csv_line = format!("{}", row);
+                            if !csv_line.trim().is_empty() {
+                                csv_rows.push(csv_line);
                             }
                         }
+                        
+                        // Convert CSV to markdown
+                        print_csv_as_markdown(&csv_rows);
                     },
                 }
             } else {
@@ -233,4 +230,97 @@ pub fn usage() {
 
 pub fn version() {
     println!("xlcat 0.1.8");
+}
+
+/// Convert CSV rows to markdown table format
+fn print_csv_as_markdown(csv_rows: &[String]) {
+    if csv_rows.is_empty() {
+        return;
+    }
+    
+    let mut rows_data: Vec<Vec<String>> = Vec::new();
+    
+    // Parse CSV rows
+    for csv_row in csv_rows {
+        let fields = parse_csv_row(csv_row);
+        if !fields.is_empty() && fields.iter().any(|f| !f.trim().is_empty()) {
+            rows_data.push(fields);
+        }
+    }
+    
+    if rows_data.is_empty() {
+        return;
+    }
+    
+    // Find max columns
+    let max_cols = rows_data.iter().map(|row| row.len()).max().unwrap_or(0);
+    
+    // Print header (first row)
+    if let Some(header) = rows_data.first() {
+        print!("|");
+        for i in 0..max_cols {
+            let empty_string = String::new();
+            let cell = header.get(i).unwrap_or(&empty_string);
+            let cleaned = clean_cell_for_markdown(cell);
+            print!(" {} |", cleaned);
+        }
+        println!();
+        
+        // Print separator row
+        print!("|");
+        for _ in 0..max_cols {
+            print!(" --- |");
+        }
+        println!();
+        
+        // Print data rows
+        for row in rows_data.iter().skip(1) {
+            print!("|");
+            for i in 0..max_cols {
+                let empty_string = String::new();
+                let cell = row.get(i).unwrap_or(&empty_string);
+                let cleaned = clean_cell_for_markdown(cell);
+                print!(" {} |", cleaned);
+            }
+            println!();
+        }
+    }
+}
+
+/// Simple CSV parser that handles quoted fields
+fn parse_csv_row(csv_row: &str) -> Vec<String> {
+    let mut fields = Vec::new();
+    let mut current_field = String::new();
+    let mut in_quotes = false;
+    let mut chars = csv_row.chars().peekable();
+    
+    while let Some(c) = chars.next() {
+        match c {
+            '"' => {
+                if in_quotes && chars.peek() == Some(&'"') {
+                    // Double quote escape
+                    current_field.push('"');
+                    chars.next(); // consume second quote
+                } else {
+                    in_quotes = !in_quotes;
+                }
+            },
+            ',' if !in_quotes => {
+                fields.push(current_field.trim().to_string());
+                current_field.clear();
+            },
+            _ => current_field.push(c),
+        }
+    }
+    
+    // Add the last field
+    fields.push(current_field.trim().to_string());
+    fields
+}
+
+/// Clean cell content for markdown output
+fn clean_cell_for_markdown(cell: &str) -> String {
+    cell.replace('|', "\\|")
+        .replace('\n', " ")
+        .replace('\r', " ")
 }

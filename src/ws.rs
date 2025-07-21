@@ -223,65 +223,7 @@ impl fmt::Display for Row<'_> {
     }
 }
 
-impl Row<'_> {
-    /// Format the row as a markdown table row
-    pub fn format_markdown(&self, is_header: bool) -> String {
-        let vec = &self.0;
-        
-        // Check if this is an empty row (all cells are empty or whitespace)
-        let is_empty_row = vec.iter().all(|cell| {
-            let cell_text = cell.value.to_string();
-            cell_text.is_empty() || cell_text.trim().is_empty() || cell_text == "\"\""
-        });
-        
-        if is_empty_row {
-            return String::new(); // Return empty string to skip empty rows
-        }
-        
-        let mut result = String::new();
-        result.push('|');
-        for cell in vec.iter() {
-            result.push(' ');
-            // Escape markdown special characters in cell values
-            let cell_text = cell.value.to_string();
-            let cleaned = if cell_text == "\"\"" { String::new() } else { cell_text };
-            let escaped = escape_markdown(&cleaned);
-            result.push_str(&escaped);
-            result.push_str(" |");
-        }
-        
-        if is_header {
-            result.push('\n');
-            result.push('|');
-            for _ in vec.iter() {
-                result.push_str(" --- |");
-            }
-        }
-        result
-    }
-    
-    /// Check if this row should be treated as a header (has meaningful content in first few columns)
-    pub fn is_likely_header(&self) -> bool {
-        if self.0.len() < 3 {
-            return false;
-        }
-        
-        // Check if the first few columns have non-empty content
-        let has_content = self.0.iter().take(5).any(|cell| {
-            let cell_text = cell.value.to_string();
-            !cell_text.is_empty() && cell_text.trim() != "" && cell_text != "\"\""
-        });
-        
-        has_content
-    }
-}
 
-/// Escape markdown special characters in cell values
-fn escape_markdown(s: &str) -> String {
-    s.replace('|', "\\|")
-     .replace('\n', " ")
-     .replace('\r', " ")
-}
 
 impl fmt::Display for Cell<'_> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
