@@ -37,6 +37,12 @@ pub use wb::Workbook;
 pub use ws::{Worksheet, ExcelValue};
 pub use utils::{col2num, excel_number_to_date, num2col};
 
+#[derive(Debug, Clone, PartialEq)]
+pub enum OutputFormat {
+    Csv,
+    Markdown,
+}
+
 enum SheetNameOrNum {
     Name(String),
     Num(usize),
@@ -53,6 +59,8 @@ pub struct Config {
     want_help: bool,
     /// Should we show the current version?
     want_version: bool,
+    /// What output format should we use?
+    pub output_format: OutputFormat,
 }
 
 pub enum ConfigError<'a> {
@@ -61,6 +69,8 @@ pub enum ConfigError<'a> {
     RowsMustBeInt,
     NeedNumRows,
     UnknownFlag(&'a str),
+    InvalidFormat(&'a str),
+    NeedFormat,
 }
 
 impl<'a> fmt::Display for ConfigError<'a> {
@@ -71,6 +81,8 @@ impl<'a> fmt::Display for ConfigError<'a> {
             ConfigError::RowsMustBeInt => write!(f, "number of rows must be an integer value"),
             ConfigError::NeedNumRows => write!(f, "must provide number of rows when using -n"),
             ConfigError::UnknownFlag(flag) => write!(f, "unknown flag: {}", flag),
+            ConfigError::InvalidFormat(fmt) => write!(f, "invalid format '{}'. Valid formats are 'csv' and 'markdown'", fmt),
+            ConfigError::NeedFormat => write!(f, "must provide format when using --fmt"),
         }
     }
 }
@@ -87,6 +99,7 @@ impl Config {
                     nrows: None,
                     want_version: false,
                     want_help: true,
+                    output_format: OutputFormat::Csv,
                 }),
                 "-v" | "--version" => Ok(Config {
                     workbook_path: "".to_owned(),
@@ -94,6 +107,7 @@ impl Config {
                     nrows: None,
                     want_version: true,
                     want_help: false,
+                    output_format: OutputFormat::Csv,
                 }),
                 _ => Err(ConfigError::NeedTab)
             }
@@ -103,7 +117,7 @@ impl Config {
             Ok(num) => SheetNameOrNum::Num(num),
             Err(_) => SheetNameOrNum::Name(args[2].clone())
         };
-        let mut config = Config { workbook_path, tab, nrows: None, want_help: false, want_version: false, };
+        let mut config = Config { workbook_path, tab, nrows: None, want_help: false, want_version: false, output_format: OutputFormat::Csv, };
         let mut iter = args[3..].iter();
         while let Some(flag) = iter.next() {
             let flag = &flag[..];
@@ -117,6 +131,17 @@ impl Config {
                         }
                     } else {
                         return Err(ConfigError::NeedNumRows)
+                    }
+                },
+                "--fmt" => {
+                    if let Some(format) = iter.next() {
+                        match format.as_ref() {
+                            "csv" => config.output_format = OutputFormat::Csv,
+                            "markdown" => config.output_format = OutputFormat::Markdown,
+                            _ => return Err(ConfigError::InvalidFormat(format)),
+                        }
+                    } else {
+                        return Err(ConfigError::NeedFormat)
                     }
                 },
                 _ => return Err(ConfigError::UnknownFlag(flag)),
@@ -148,8 +173,25 @@ pub fn run(config: Config) -> Result<(), String> {
                 } else {
                     1048576 // max number of rows in an Excel worksheet
                 };
-                for row in ws.rows(&mut wb).take(nrows) {
-                    println!("{}", row);
+                match config.output_format {
+                    OutputFormat::Csv => {
+                        for row in ws.rows(&mut wb).take(nrows) {
+                            println!("{}", row);
+                        }
+                    },
+                    OutputFormat::Markdown => {
+                        // Collect all CSV rows first, then convert to markdown
+                        let mut csv_rows: Vec<String> = Vec::new();
+                        for row in ws.rows(&mut wb).take(nrows) {
+                            let csv_line = format!("{}", row);
+                            if !csv_line.trim().is_empty() {
+                                csv_rows.push(csv_line);
+                            }
+                        }
+                        
+                        // Convert CSV to markdown
+                        print_csv_as_markdown(&csv_rows);
+                    },
                 }
             } else {
                 return Err("that sheet does not exist".to_owned())
@@ -174,17 +216,111 @@ pub fn usage() {
         "page is hosted at https://github.com/xlprotips/xl.\n",
         "\n",
         "USAGE:\n",
-        "  xlcat PATH TAB [-n NUM] [-h | --help]\n",
+        "  xlcat PATH TAB [-n NUM] [--fmt FORMAT] [-h | --help]\n",
         "\n",
         "ARGS:\n",
         "  PATH      Where the xlsx file is located on your filesystem.\n",
         "  TAB       Which tab in the xlsx you want to print to screen.\n",
         "\n",
         "OPTIONS:\n",
-        "  -n <NUM>  Limit the number of rows we print to <NUM>.\n",
+        "  -n <NUM>     Limit the number of rows we print to <NUM>.\n",
+        "  --fmt FORMAT Output format: 'csv' (default) or 'markdown'.\n",
     ));
 }
 
 pub fn version() {
     println!("xlcat 0.1.8");
+}
+
+/// Convert CSV rows to markdown table format
+fn print_csv_as_markdown(csv_rows: &[String]) {
+    if csv_rows.is_empty() {
+        return;
+    }
+    
+    let mut rows_data: Vec<Vec<String>> = Vec::new();
+    
+    // Parse CSV rows
+    for csv_row in csv_rows {
+        let fields = parse_csv_row(csv_row);
+        if !fields.is_empty() && fields.iter().any(|f| !f.trim().is_empty()) {
+            rows_data.push(fields);
+        }
+    }
+    
+    if rows_data.is_empty() {
+        return;
+    }
+    
+    // Find max columns
+    let max_cols = rows_data.iter().map(|row| row.len()).max().unwrap_or(0);
+    
+    // Print header (first row)
+    if let Some(header) = rows_data.first() {
+        print!("|");
+        for i in 0..max_cols {
+            let empty_string = String::new();
+            let cell = header.get(i).unwrap_or(&empty_string);
+            let cleaned = clean_cell_for_markdown(cell);
+            print!(" {} |", cleaned);
+        }
+        println!();
+        
+        // Print separator row
+        print!("|");
+        for _ in 0..max_cols {
+            print!(" --- |");
+        }
+        println!();
+        
+        // Print data rows
+        for row in rows_data.iter().skip(1) {
+            print!("|");
+            for i in 0..max_cols {
+                let empty_string = String::new();
+                let cell = row.get(i).unwrap_or(&empty_string);
+                let cleaned = clean_cell_for_markdown(cell);
+                print!(" {} |", cleaned);
+            }
+            println!();
+        }
+    }
+}
+
+/// Simple CSV parser that handles quoted fields
+fn parse_csv_row(csv_row: &str) -> Vec<String> {
+    let mut fields = Vec::new();
+    let mut current_field = String::new();
+    let mut in_quotes = false;
+    let mut chars = csv_row.chars().peekable();
+    
+    while let Some(c) = chars.next() {
+        match c {
+            '"' => {
+                if in_quotes && chars.peek() == Some(&'"') {
+                    // Double quote escape
+                    current_field.push('"');
+                    chars.next(); // consume second quote
+                } else {
+                    in_quotes = !in_quotes;
+                }
+            },
+            ',' if !in_quotes => {
+                fields.push(current_field.trim().to_string());
+                current_field.clear();
+            },
+            _ => current_field.push(c),
+        }
+    }
+    
+    // Add the last field
+    fields.push(current_field.trim().to_string());
+    fields
+}
+
+/// Clean cell content for markdown output
+fn clean_cell_for_markdown(cell: &str) -> String {
+    cell.replace('|', "\\|")
+        .replace('\n', " ")
+        .replace('\r', " ")
 }
