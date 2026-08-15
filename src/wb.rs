@@ -375,51 +375,67 @@ impl Workbook {
 
 fn strings(zip_file: &mut ZipArchive<File>) -> Vec<String> {
     let mut strings = Vec::new();
-    match zip_file.by_name("xl/sharedStrings.xml") {
-        Ok(strings_file) => {
-            let reader = BufReader::new(strings_file);
-            let mut reader = Reader::from_reader(reader);
-            reader.config_mut().trim_text(true);
-            let mut buf = Vec::new();
-            let mut this_string = String::new();
-            let mut preserve_space = false;
-            loop {
-                match reader.read_event_into(&mut buf) {
-                    Ok(Event::Start(ref e)) if e.name() == QName(b"t") => {
-                        if let Some(att) = utils::get(e.attributes(), b"xml:space") {
-                            if att == "preserve" {
-                                preserve_space = true;
-                            } else {
-                                preserve_space = false;
-                            }
-                        } else {
-                            preserve_space = false;
-                        }
-                    },
-                    Ok(Event::Text(ref e)) => {
-                        let decoded = reader.decoder().decode(e).unwrap();
-                        let txt = quick_xml::escape::unescape(&decoded).unwrap();
-                        this_string.push_str(&txt[..])
-                    },
-                    Ok(Event::Empty(ref e)) | Ok(Event::Start(ref e)) if e.name() == QName(b"t") => strings.push("".to_owned()),
-                    Ok(Event::End(ref e)) if e.name() == QName(b"t") => {
-                        if preserve_space {
-                            strings.push(this_string.to_owned());
-                        } else {
-                            strings.push(this_string.trim().to_owned());
-                        }
-                        this_string = String::new();
-                    },
-                    Ok(Event::Eof) => break,
-                    Err(e) => panic!("Error at position {}: {:?}", reader.buffer_position(), e),
-                    _ => (),
+
+    if let Ok(strings_file) = zip_file.by_name("xl/sharedStrings.xml") {
+        let reader = BufReader::new(strings_file);
+        let mut reader = Reader::from_reader(reader);
+        reader.config_mut().trim_text(false);
+
+        let mut buf = Vec::new();
+        let mut shared_string = String::new();
+        let mut inside_text = false;
+        let mut preserve_space = false;
+
+        loop {
+            match reader.read_event_into(&mut buf) {
+                Ok(Event::Start(ref e)) if e.name() == QName(b"si") => {
+                    shared_string.clear();
                 }
-                buf.clear();
+
+                Ok(Event::Start(ref e)) if e.name() == QName(b"t") => {
+                    inside_text = true;
+                    preserve_space = utils::get(e.attributes(), b"xml:space")
+                        .is_some_and(|value| value == "preserve");
+                }
+
+                Ok(Event::Text(ref e)) if inside_text => {
+                    let decoded = reader.decoder().decode(e).unwrap();
+                    let text = quick_xml::escape::unescape(&decoded).unwrap();
+
+                    if preserve_space {
+                        shared_string.push_str(&text);
+                    } else {
+                        shared_string.push_str(text.trim());
+                    }
+                }
+
+                Ok(Event::End(ref e)) if e.name() == QName(b"t") => {
+                    inside_text = false;
+                    preserve_space = false;
+                }
+
+                Ok(Event::End(ref e)) if e.name() == QName(b"si") => {
+                    strings.push(std::mem::take(&mut shared_string));
+                }
+
+                Ok(Event::Eof) => break,
+
+                Err(error) => {
+                    panic!(
+                        "Error at position {}: {:?}",
+                        reader.buffer_position(),
+                        error
+                    );
+                }
+
+                _ => {}
             }
-            strings
-        },
-        Err(_) => strings
+
+            buf.clear();
+        }
     }
+
+    strings
 }
 
 /// find the number of rows and columns used in a particular worksheet. takes the workbook xlsx
@@ -596,6 +612,20 @@ mod tests {
             let row1 = ws.rows(&mut wb).nth(0).unwrap();
             let v1 = &row1[0];
             assert_eq!(v1.to_string(), "\"Cell A1\"".to_string());
+        }
+
+        #[test]
+        fn rich_text_shared_strings() {
+            let mut wb =
+                Workbook::open("tests/data/rich_text_shared_strings.xlsx").unwrap();
+
+            let sheets = wb.sheets();
+            let ws = sheets.get("Sheet1").unwrap();
+            let row = ws.rows(&mut wb).next().unwrap();
+
+            assert_eq!(row.0.len(), 2);
+            assert_eq!(row.0[0].to_string(), "\"OrderStatus\"".to_string());
+            assert_eq!(row.0[1].to_string(), "\"Reference\"".to_string());
         }
     }
 }
